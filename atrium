@@ -56,6 +56,16 @@ service_pv_prefixes = {"BSA": [], "BSSS": [], "BSAS": [], "BLD": []}
 # Number of BSA data items to be used in test
 ITEMS_PER_BSA_ARRAY = 10
 
+# Logger object - CRITICAL, ERROR, WARNING, INFO, DEBUG
+logger = logging.getLogger()
+file_handler = logging.FileHandler("logfile.log")
+file_handler.setLevel(logging.DEBUG)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+logger.setLevel(logging.DEBUG)
+
 #TODO: case when cpu name is wrong
 # Pass cpu name as argument
 # Make number of bsa items to test an argument
@@ -237,7 +247,7 @@ class BSA_TESTER:
 
     def estimate_sleep_time(self):
         # Sample data at different rates to determine wait time until next update
-        return 0.1
+        return 1.25
 
     def test_bsa_signal_change_in_time(self, pv_name):
         # Read the PV twice, so we can compare if they changed
@@ -252,14 +262,15 @@ class BSA_TESTER:
         camonitor_clear(pv_name)
         # Check if both samples are populated with data
         if len(signal_data1) == 0 or len(signal_data2) == 0:
-            print("[ERROR] PV " + pv_name + " didn't bring any data (empty). BSA is not working?")
+            logger.error("[ERROR] - " + pv_name + " didn't bring any data (empty).")
+            logger.error("          Is BSA working?")
             return
         # Check if the bsa buffers changed in time.
         identical_count = 0
         previous_data   = 0
         if (len(signal_data1) == len(signal_data2) and np.array_equal(np.array(signal_data1), np.array(signal_data2))):
-            print("PV name "+str(pv_name))
-            print("ERROR - signal is not changing over time.")
+            logger.critical("[CRITICAL] - " + pv_name + " is not updated with new values.")
+            logger.critical("             Sampling too fast or is the PV value constant?")
             return
         # Check to see if we always get the same value in the latest sample 
         for data in signal_data2:
@@ -267,8 +278,8 @@ class BSA_TESTER:
                 identical_count += 1
             previous_data = data
         if identical_count == len(signal_data2) - 1:
-            print("[WARNING] PV " + pv_name + " keeps the same value over time")
-            print("          Check if the IOC is triggering the firmware correctly.")
+            logger.warning("[WARNING] - " + pv_name + " keeps the same value over time.")
+            logger.warning("            Is IOC triggering the firmware correctly?")
             return
 
     def test_bsa_system_buffers(self):
@@ -284,7 +295,7 @@ class BSA_TESTER:
                     for hst_type in bsa_hst_type_suffixes: 
                         # Form the PV name
                         pv = signal_pv + hst_type + dest_suffix + freq_suffix# + ".[-" + str(ITEMS_PER_BSA_ARRAY) + ":]"
-                        print("\n***** " + pv + " *****\n")
+                        print("\n*****< " + pv + " >*****\n")
                         
                         # Test 1: check for signal change over time
                         self.test_bsa_signal_change_in_time(pv)
