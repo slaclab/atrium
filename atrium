@@ -62,7 +62,7 @@ ITEMS_PER_BSA_ARRAY = 10
 
 # Logger object - CRITICAL, ERROR, WARNING, INFO, DEBUG
 logger = logging.getLogger()
-file_handler = logging.FileHandler("logfile.log")
+file_handler = logging.FileHandler("logfile.log", mode='w')
 file_handler.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
