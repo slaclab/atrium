@@ -266,18 +266,12 @@ class BSA_TESTER:
             logger.error("          Is BSA working?")
             return
         # Check if the bsa buffers changed in time.
-        identical_count = 0
-        previous_data   = 0
-        if (len(signal_data1) == len(signal_data2) and np.array_equal(np.array(signal_data1), np.array(signal_data2))):
+        if np.array_equal(np.array(signal_data1), np.array(signal_data2)):
             logger.critical("[CRITICAL] - " + pv_name + " is not updated with new values.")
             logger.critical("             Sampling too fast or is the PV value constant?")
             return
         # Check to see if we always get the same value in the latest sample 
-        for data in signal_data2:
-            if data == previous_data:
-                identical_count += 1
-            previous_data = data
-        if identical_count == len(signal_data2) - 1:
+        if (signal_data2 == signal_data2[-1]).all():
             logger.warning("[WARNING] - " + pv_name + " keeps the same value over time.")
             logger.warning("            Is IOC triggering the firmware correctly?")
             return
