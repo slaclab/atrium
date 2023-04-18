@@ -247,10 +247,10 @@ class BSA_TESTER:
             global signal_data2
             signal_data2 = value
             second_collected = True
-            print("Second sample --> "+str(value))
+            print("Second sample --> "+str(value)+'\n')
 
     def estimate_sleep_time(self):
-        # Sample data at different rates to determine wait time until next update
+        # TODO - Sample data at different rates to determine wait time until next update
         return 1.25
 
     def get_pv_data(self, pv_name): 
@@ -268,8 +268,8 @@ class BSA_TESTER:
         # Check if both samples are populated with data
         if (isinstance(signal_data1, (list, tuple, np.ndarray)) and (len(signal_data1) == 0 or len(signal_data2) == 0)) or \
            (not isinstance(signal_data1, (list, tuple, np.ndarray)) and (np.array(signal_data1).size == 0 or np.array(signal_data2).size == 0)):
-            logger.error("[ERROR] - " + pv_name + " didn't bring any data (empty).")
-            logger.error("          Is BSA working?")
+            logger.error("[ERROR] -    " + pv_name + " didn't bring any data (empty).")
+            logger.error("             Is BSA working?")
 
     def check_pair_for_diff_pv_data(self, pv_name):
         # Check if the bsa buffers changed in time.
@@ -281,8 +281,8 @@ class BSA_TESTER:
         # Check to see if we always get the same value in the latest sample 
         if (isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array(signal_data2)[-1]).all()) or \
            (not isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array([signal_data2])[-1]).all()):
-            logger.warning("[WARNING] - " + pv_name + " keeps the same value over time.")
-            logger.warning("            Is IOC triggering the firmware correctly?")
+            logger.warning("[WARNING] -  " + pv_name + " keeps the same value over time.")
+            logger.warning("             Is IOC triggering the firmware correctly?")
 
     def check_for_nan_pv_data(self, pv_name):
         # Check for at least one NaN value
