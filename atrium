@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import time
+import math
 import logging
 import subprocess
 import numpy as np
@@ -249,50 +250,100 @@ class BSA_TESTER:
         # Sample data at different rates to determine wait time until next update
         return 1.25
 
-    def test_bsa_signal_change_in_time(self, pv_name):
+    def get_pv_data(self, pv_name): 
         # Read the PV twice, so we can compare if they changed
         global first_collected
         global second_collected
         first_collected = second_collected = False
         camonitor(pv_name, callback=self.on_monitor)
-        # We use 0.1s sleep time, although this may need to change dynamically
         sleep_time = self.estimate_sleep_time()
         while (not first_collected) or (not second_collected):
             time.sleep(sleep_time)
         camonitor_clear(pv_name)
+
+    def check_pair_for_packed_pv_data(self, pv_name):
         # Check if both samples are populated with data
-        if len(signal_data1) == 0 or len(signal_data2) == 0:
+        if (isinstance(signal_data1, (list, tuple, np.ndarray)) and (len(signal_data1) == 0 or len(signal_data2) == 0)) or \
+           (not isinstance(signal_data1, (list, tuple, np.ndarray)) and (np.array(signal_data1).size == 0 or np.array(signal_data2).size == 0)):
             logger.error("[ERROR] - " + pv_name + " didn't bring any data (empty).")
             logger.error("          Is BSA working?")
-            return
+
+    def check_pair_for_diff_pv_data(self, pv_name):
         # Check if the bsa buffers changed in time.
         if np.array_equal(np.array(signal_data1), np.array(signal_data2)):
             logger.critical("[CRITICAL] - " + pv_name + " is not updated with new values.")
             logger.critical("             Sampling too fast or is the PV value constant?")
-            return
+            
+    def check_for_updated_pv_data(self, pv_name):
         # Check to see if we always get the same value in the latest sample 
-        if (signal_data2 == signal_data2[-1]).all():
+        if (isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array(signal_data2)[-1]).all()) or \
+           (not isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array([signal_data2])[-1]).all()):
             logger.warning("[WARNING] - " + pv_name + " keeps the same value over time.")
             logger.warning("            Is IOC triggering the firmware correctly?")
-            return
+
+    def check_for_nan_pv_data(self, pv_name):
+        # Check for at least one NaN value
+        if np.isnan(np.sum(signal_data1)) or np.isnan(np.sum(signal_data2)):
+            logger.error("[ERROR] - " + pv_name + " contains NaN values.")
+
+    def test_bsa_signal_change_in_time(self, pv_name):
+        # Sample PV data
+        self.get_pv_data(pv_name)
+        # Check for NaN values
+        self.check_for_nan_pv_data(pv_name)
+        # Check if both samples are populated with data
+        self.check_pair_for_packed_pv_data(pv_name)
+        # Check if the bsa buffers changed in time.
+        self.check_pair_for_diff_pv_data(pv_name)
+        # Check to see if we always get the same value in the latest sample 
+        self.check_for_updated_pv_data(pv_name)
+    
+    def test_bsss_signal_change_in_time(self, pv_name):
+        # Sample PV data
+        self.get_pv_data(pv_name)
+        # Check for NaN values
+        self.check_for_nan_pv_data(pv_name)
+        # Check if both samples are populated with data
+        self.check_pair_for_packed_pv_data(pv_name)
+        # Check if the bsa buffers changed in time.
+        self.check_pair_for_diff_pv_data(pv_name)
 
     def test_bsa_system_buffers(self):
-        print("Checking BSA system buffers. This may take some time. Please be patient.")
+        print("Checking BSA system buffers. This may take some time.")
         list_of_signal_pvs = service_pv_prefixes["BSA"]
-        # Loop over the PVs for all user, system and fault buffers
-        for signal_pv in list_of_signal_pvs:
+        self.test_system_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, self.test_bsa_signal_change_in_time) 
+
+    def test_bsss_system_buffers(self):
+        print("Checking BSSS system buffers. This may take some time.")
+        list_of_signal_pvs = service_pv_prefixes["BSSS"]
+        self.test_system_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, self.test_bsss_signal_change_in_time) 
+    
+    def test_bsa_user_buffers(self):
+        print("TBD - Test bsa user buffers")
+    
+    def test_bsss_user_buffers(self):
+        print("TBD - Test bsss user buffers")
+    
+    def test_bsa_fault_buffers(self):
+        print("TBD - Test bsa fault buffers")
+    
+    def test_bsss_fault_buffers(self):
+        print("TBD - Test bsss fault buffers")
+    
+    def test_system_buffers(self, signal_pvs, service_type_suffixes, fcn_test_signal_change_in_time):
+        for signal_pv in signal_pvs:
             for dest_suffix in bsa_dest_suffixes:
                 print("\n--------------------------------------------")
                 print("Testing " + dest_suffix + " for " + signal_pv)
                 print("--------------------------------------------")
                 for freq_suffix, freq in bsa_freq_suffixes.items():
-                    for hst_type in bsa_hst_type_suffixes: 
+                    for svc_type in service_type_suffixes: 
                         # Form the PV name
-                        pv = signal_pv + hst_type + dest_suffix + freq_suffix# + ".[-" + str(ITEMS_PER_BSA_ARRAY) + ":]"
+                        pv = signal_pv + svc_type + dest_suffix + freq_suffix# + ".[-" + str(ITEMS_PER_BSA_ARRAY) + ":]"
                         print("\n*****< " + pv + " >*****\n")
                         
                         # Test 1: check for signal change over time
-                        self.test_bsa_signal_change_in_time(pv)
+                        fcn_test_signal_change_in_time(pv)
                         
                         # Test 2: check for ...
                         
@@ -323,5 +374,12 @@ if __name__ == "__main__":
      
     # Create a tester object for BSA buffers
     tester = BSA_TESTER()
-    tester.test_bsa_system_buffers()
 
+    tester.test_bsa_system_buffers  ()
+    tester.test_bsss_system_buffers ()
+    
+    tester.test_bsa_user_buffers    ()
+    tester.test_bsss_user_buffers   ()
+    
+    tester.test_bsa_fault_buffers   ()
+    tester.test_bsss_fault_buffers  ()
