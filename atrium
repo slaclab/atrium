@@ -328,13 +328,13 @@ class BSA_TESTER:
         # Check to see if we always get the same value in the latest sample 
         if (isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array(signal_data2)[-1]).all()) or \
            (not isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array([signal_data2])[-1]).all()):
-            logger.warning("[WARNING] -  " + pv_name + " keeps the same value over time.")
+            logger.warning("[WARNING]  - " + pv_name + " keeps the same value over time.")
             logger.warning("             Is IOC triggering the firmware correctly?")
 
     def check_pv_for_nan_data(self, pv_name):
         # Check for at least one NaN value
         if np.isnan(np.sum(signal_data1)) or np.isnan(np.sum(signal_data2)):
-            logger.error("[ERROR] - " + pv_name + " contains NaN values.")
+            logger.error("[ERROR]    - " + pv_name + " contains NaN values.")
 
     def check_waveform_signal_change_in_time(self, pv_name):
         # Sample PV data
@@ -362,10 +362,8 @@ class BSA_TESTER:
         if "PID" in pv_name and "HST" in pv_name:
             # Sample PID PV data
             self.get_pv_data(pv_name)
-            
             # Extract PID update rate
             rate = self.compute_waveform_PID_update_rate()
-
             # Compare with expected PID update rate
             self.compare_waveform_PID_update_rate(pv_name, rate)
     
