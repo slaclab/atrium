@@ -60,6 +60,9 @@ service_pv_prefixes = {"BSA": [], "BSSS": [], "BSAS": [], "BLD": []}
 # Number of BSA data items to be used in test
 ITEMS_PER_BSA_ARRAY = 10
 
+# Main beam frequency, assume LCLS-II/SC (910kHz)
+core_linac_freq = 910000
+
 # Logger object - CRITICAL, ERROR, WARNING, INFO, DEBUG
 logger = logging.getLogger()
 file_handler = logging.FileHandler("logfile.log", mode='w')
@@ -235,34 +238,84 @@ class BSA_TESTER:
     def __init__(self):
         print("Initializing BSA_TESTER\n")
 
+    def estimate_sleep_time(self):
+        # TODO - Sample data at different rates to determine wait time until next update
+        return 1.25
+    
     def on_monitor(self, pv_name=None, value=None, **kw):
-        global first_collected, second_collected
-        #print("Running callback on_monitor:")
+        global first_collected
         if not first_collected:
             global signal_data1 
             signal_data1 = value
             first_collected = True
-            print("First sample  --> "+str(value))
+            print("Another sample --> "+str(value))
+
+    def on_monitor_pair(self, pv_name=None, value=None, **kw):
+        global first_collected, second_collected
+        if not first_collected:
+            global signal_data1 
+            signal_data1 = value
+            first_collected = True
+            print("First sample   --> "+str(value))
         elif not second_collected:
             global signal_data2
             signal_data2 = value
             second_collected = True
-            print("Second sample --> "+str(value)+'\n')
-
-    def estimate_sleep_time(self):
-        # TODO - Sample data at different rates to determine wait time until next update
-        return 1.25
-
+            print("Second sample  --> "+str(value)+'\n')
+    
     def get_pv_data(self, pv_name): 
+        # Read the PV twice, so we can compare if they changed
+        global first_collected
+        first_collected = False
+        camonitor(pv_name, callback=self.on_monitor)
+        sleep_time = self.estimate_sleep_time()
+        while not first_collected:
+            time.sleep(sleep_time)
+        camonitor_clear(pv_name)
+
+    def get_pv_data_pair(self, pv_name): 
         # Read the PV twice, so we can compare if they changed
         global first_collected
         global second_collected
         first_collected = second_collected = False
-        camonitor(pv_name, callback=self.on_monitor)
+        camonitor(pv_name, callback=self.on_monitor_pair)
         sleep_time = self.estimate_sleep_time()
         while (not first_collected) or (not second_collected):
             time.sleep(sleep_time)
         camonitor_clear(pv_name)
+
+    def compute_waveform_PID_update_rate(self):
+        ppid = signal_data1[0]
+        pids = signal_data1[1:]
+        pdiff = signal_data1[1] - ppid
+        for pid in pids:
+            diff = pid - ppid
+            if np.not_equal(diff, pdiff):
+                logger.error("[ERROR] -    In " + pv_name + " the PID diffs are not consistent between elements")
+                logger.error("             Please make sure that sampling of data is done at consistent intervals.")
+                return -1
+            ppid = pid
+        return pdiff
+
+    def compare_waveform_PID_update_rate(self, pv_name, diff):
+        sys_buff_match = [k for k in list(system_buff_freq_suffixes.keys()) if k in pv_name]
+        if sys_buff_match:
+            # We have a system buffer, extract update rate from name
+            pv_update_rate  = system_buff_freq_suffixes[sys_buff_match[0]] 
+            pid_update_rate = core_linac_freq / diff
+            if not np.equal(pid_update_rate, pv_update_rate):
+                logger.error("[ERROR] -    " + pv_name + " the PID update rate (" + str(pid_update_rate) + "Hz) \
+                doesn't match the PV update rate of " + str(pv_update_rate) + "Hz")
+                logger.error("             Please make sure that sampling of data is done at consistent intervals.")
+        else:
+            # We have a user buffer - TODO
+            pv_update_rate = 1
+         
+    def compute_scalar_PID_update_rate(self):
+        print()
+
+    def compare_scalar_PID_update_rate(self):
+        print()
 
     def check_pair_for_packed_pv_data(self, pv_name):
         # Check if both samples are populated with data
@@ -277,69 +330,95 @@ class BSA_TESTER:
             logger.critical("[CRITICAL] - " + pv_name + " is not updated with new values.")
             logger.critical("             Sampling too fast or is the PV value constant?")
             
-    def check_for_updated_pv_data(self, pv_name):
+    def check_pv_for_updated_data(self, pv_name):
         # Check to see if we always get the same value in the latest sample 
         if (isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array(signal_data2)[-1]).all()) or \
            (not isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2) == np.array([signal_data2])[-1]).all()):
             logger.warning("[WARNING] -  " + pv_name + " keeps the same value over time.")
             logger.warning("             Is IOC triggering the firmware correctly?")
 
-    def check_for_nan_pv_data(self, pv_name):
+    def check_pv_for_nan_data(self, pv_name):
         # Check for at least one NaN value
         if np.isnan(np.sum(signal_data1)) or np.isnan(np.sum(signal_data2)):
             logger.error("[ERROR] - " + pv_name + " contains NaN values.")
 
-    def test_bsa_signal_change_in_time(self, pv_name):
+    def check_waveform_signal_change_in_time(self, pv_name):
         # Sample PV data
-        self.get_pv_data(pv_name)
+        self.get_pv_data_pair(pv_name)
         # Check for NaN values
-        self.check_for_nan_pv_data(pv_name)
+        self.check_pv_for_nan_data(pv_name)
         # Check if both samples are populated with data
         self.check_pair_for_packed_pv_data(pv_name)
         # Check if the bsa buffers changed in time.
         self.check_pair_for_diff_pv_data(pv_name)
         # Check to see if we always get the same value in the latest sample 
-        self.check_for_updated_pv_data(pv_name)
+        self.check_pv_for_updated_data(pv_name)
     
-    def test_bsss_signal_change_in_time(self, pv_name):
+    def check_scalar_signal_change_in_time(self, pv_name):
         # Sample PV data
-        self.get_pv_data(pv_name)
+        self.get_pv_data_pair(pv_name)
         # Check for NaN values
-        self.check_for_nan_pv_data(pv_name)
+        self.check_pv_for_nan_data(pv_name)
         # Check if both samples are populated with data
         self.check_pair_for_packed_pv_data(pv_name)
         # Check if the bsa buffers changed in time.
         self.check_pair_for_diff_pv_data(pv_name)
+    
+    def check_waveform_PID_update_rate(self, pv_name):
+        if "PID" in pv_name and "HST" in pv_name:
+            # Sample PID PV data
+            self.get_pv_data(pv_name)
+            
+            # Extract PID update rate
+            rate = self.compute_waveform_PID_update_rate()
+
+            # Compare with expected PID update rate
+            self.compare_waveform_PID_update_rate(pv_name, rate)
+    
+    def check_scalar_PID_update_rate(self, pv_name):
+        if "PID" in pv_name and "HST" not in pv_name:
+            # Sample PID PV data
+            self.get_pv_data(pv_name)
+            
+            # Extract PID update rate
+            
+            # Compare with expected PID update rate
+
 
     def test_bsa_system_buffers(self):
         print("Checking BSA system buffers. This may take some time.")
         list_of_signal_pvs = service_pv_prefixes["BSA"]
-        self.test_system_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, self.test_bsa_signal_change_in_time) 
+        self.test_system_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, \
+        self.check_waveform_signal_change_in_time, self.check_waveform_PID_update_rate) 
 
     def test_bsss_system_buffers(self):
         print("Checking BSSS system buffers. This may take some time.")
         list_of_signal_pvs = service_pv_prefixes["BSSS"]
-        self.test_system_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, self.test_bsss_signal_change_in_time) 
+        self.test_system_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, \
+        self.check_scalar_signal_change_in_time, self.check_scalar_PID_update_rate) 
     
     def test_bsa_user_buffers(self):
         print("Checking BSA user buffers. This may take some time.")
         list_of_signal_pvs = service_pv_prefixes["BSA"]
-        self.test_user_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, bsa_usr_buff_idx_range, self.test_bsa_signal_change_in_time) 
+        self.test_user_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, \
+        bsa_usr_buff_idx_range, self.check_waveform_signal_change_in_time) 
     
     def test_bsss_user_buffers(self):
         print("Checking BSSS user buffers. This may take some time.")
         list_of_signal_pvs = service_pv_prefixes["BSSS"]
-        self.test_user_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, bsss_usr_buff_idx_range, self.test_bsss_signal_change_in_time) 
+        self.test_user_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, \
+        bsss_usr_buff_idx_range, self.check_scalar_signal_change_in_time) 
     
     def test_bsa_fault_buffers(self):
         print("Checking BSA fault buffers. This may take some time.")
         list_of_signal_pvs = service_pv_prefixes["BSA"]
-        self.test_fault_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, bsa_usr_buff_idx_range, self.test_bsa_signal_change_in_time) 
+        self.test_fault_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, \
+        flt_buff_suffixes, self.check_waveform_signal_change_in_time) 
     
     def test_bsss_fault_buffers(self):
-        print("Testing bsss fault buffers - There are no BSSS fault buffers.")
+        print("Checking BSSS fault buffers - There are no BSSS fault buffers.")
     
-    def test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_test_signal_change_in_time):
+    def test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_check_signal_change_in_time, fcn_check_PID_update_rate):
         for signal_pv in signal_pvs:
             for dest_suffix in system_buff_dest_suffixes:
                 print("\n--------------------------------------------")
@@ -352,10 +431,11 @@ class BSA_TESTER:
                         print("\n*****< " + pv + " >*****\n")
                         
                         # Test 1: check for signal change over time
-                        fcn_test_signal_change_in_time(pv)
+                        fcn_check_signal_change_in_time(pv)
                         
-                        # Test 2: check for ...
-                        
+                        # Test 2: check if the PID changes as expected (for a PID-type PV only)
+                        fcn_check_PID_update_rate(pv) 
+
                         # Test 3: check for ...
                         
                         # Test 4: check for ...
@@ -382,13 +462,16 @@ class BSA_TESTER:
                     # Test 1: check for signal change over time
                     fcn_test_signal_change_in_time(pv)
                         
-    def test_fault_buffers(self, signal_pvs, variable_type_suffixes, flt_buff_idx_range, fcn_test_signal_change_in_time):
+                    # Test 2: check if the PID changes as expected (for a PID-type PV only)
+                    
+
+    def test_fault_buffers(self, signal_pvs, variable_type_suffixes, flt_buff_name_suffixes, fcn_test_signal_change_in_time):
         for signal_pv in signal_pvs:
             print("\n--------------------------------------------")
             print("Testing " + " for " + signal_pv)
             print("--------------------------------------------")
             for var_type in variable_type_suffixes:
-                for flt_idx_suffix in flt_buff_suffixes:
+                for flt_idx_suffix in flt_buff_name_suffixes:
                     # Form the PV name
                     pv = signal_pv + var_type + flt_idx_suffix
                     print("\n*****< " + pv + " >*****\n")
