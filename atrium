@@ -67,7 +67,8 @@ bsa_usr_buff_fixed_rate = True
 bsa_usr_buff_idx_range = np.arange(21,50)
 
 # BSA user buffer fixed rate options
-bsa_usr_buff_fixed_rates = {"1Hz":1,"10Hz":10,"100Hz":100,"1kHz":1.0e+03,"10kHz":10.0e+03,"71.5kHz":71.5e+03,"1MHz":1.0e+06}
+#bsa_usr_buff_fixed_rates = {"1Hz":1,"10Hz":10,"100Hz":100,"1kHz":1.0e+03,"10kHz":10.0e+03,"71.5kHz":71.5e+03,"1MHz":1.0e+06}
+bsa_usr_buff_fixed_rates = {"1Hz":1,"10Hz":10,"100Hz":100}
 
 # BSA user buffer AC rate options
 bsa_usr_buff_ac_rates = {"0.5Hz":0.5,"1Hz":1,"5Hz":5,"10Hz":10,"30Hz":30,"60Hz":60}
@@ -336,7 +337,7 @@ class BSA_TESTER:
                 signal_data1 = []
                 camonitor(pv_name, callback=self.on_monitor_wf_usr_buff)
             else:
-                camonitor(pv_name, callback=self.on_monitor_usr_buff)
+                camonitor(pv_name, callback=self.on_monitor_scalar_usr_buff)
             self.trigger_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
                                      bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
             time.sleep(bsa_usr_buff_wait_time_per_sample*bsa_usr_buff_samples)
@@ -603,11 +604,11 @@ class BSA_TESTER:
                     fcn_check_signal_change_in_time(pv_name=pv)
                         
                     # Test 2: check if the PID changes as expected (for a PID-type PV only)
-#                    if "PID" in pv:
-#                        for rate in bsa_usr_buff_fixed_rates.keys():
-#                            print("Fixed Rate = " + rate)
-#                            self.prep_user_buffer(idx, rate, samples=samples)
-#                            fcn_check_PID_update_rate(pv_name=pv) 
+                    if "PID" in pv:
+                        for rate in bsa_usr_buff_fixed_rates.keys():
+                            print("Fixed Rate = " + rate)
+                            self.prep_user_buffer(idx, rate, samples=samples)
+                            fcn_check_PID_update_rate(pv_name=pv) 
                     
 #                        for rate in bsa_usr_buff_ac_rates.keys():
 #                            print("AC    Rate = " + rate)
