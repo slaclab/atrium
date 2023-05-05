@@ -341,7 +341,6 @@ class BSA_TESTER:
         global first_collected
         global second_collected
         first_collected = second_collected = False
-        #global bsa_usr_buff
         if not bsa_usr_buff:
             camonitor(pv_name, callback=self.on_monitor_sys_buff)
             while not first_collected:
@@ -370,7 +369,6 @@ class BSA_TESTER:
         global first_collected
         global second_collected
         first_collected = second_collected = False
-        #global bsa_usr_buff
         if not bsa_usr_buff:
             camonitor(pv_name, callback=self.on_monitor_pair_sys_buff)
             while (not first_collected) or (not second_collected):
