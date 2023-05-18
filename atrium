@@ -371,14 +371,23 @@ class BSA_TESTER:
     def get_pv_data_v2(self, pv_name):
         # Prepare global variables for write access 
         global signal_data1
-        global first_collected
         signal_data1 = []
+        global first_collected
+        first_collected = False
         if not bsa_usr_buff:
             # System buffer
             pv = PV(pv_name)
             pv.wait_for_connection(timeout=None)
-            signal_data1 = pv.get(timeout=None, use_monitor=False)
-            print("Reading sample --> "+str(signal_data1))
+            if np.array(pv.value).size > 0:
+                # Scalar/Waveform PV
+                cb=pv.add_callback(callback=self.on_monitor_single_sys_buff)
+                while (not first_collected):
+                    time.sleep(sys_buff_wait_time)
+                pv.remove_callback(cb) 
+            else:
+                # Empty PV
+                print("PV is empty!!")
+                return
         elif bsa_usr_buff:
             # Trigger BSA data acquisition
             if bsss_usr_buff_acq:
