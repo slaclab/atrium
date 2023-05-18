@@ -339,7 +339,7 @@ class BSA_TESTER:
             signal_data2 = value
             print("Second sample  --> "+str(value))
 
-    def get_pv_data(self, pv_name): 
+    def get_pv_data_single_deprecated(self, pv_name): 
         # Prepare global variables for write access 
         global first_collected
         if not bsa_usr_buff:
@@ -368,7 +368,7 @@ class BSA_TESTER:
             self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
                                    bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
    
-    def get_pv_data_v2(self, pv_name):
+    def get_pv_data_single(self, pv_name):
         # Prepare global variables for write access 
         global signal_data1
         signal_data1 = []
@@ -405,7 +405,7 @@ class BSA_TESTER:
             self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
                                    bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
 
-    def get_pv_data_pair(self, pv_name): 
+    def get_pv_data_pair_deprecated(self, pv_name): 
         # Prepare global variables for write access
         global signal_data1, signal_data2
         global first_collected, second_collected
@@ -443,7 +443,7 @@ class BSA_TESTER:
                                    bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
             print()
 
-    def get_pv_data_pair_v2(self, pv_name): 
+    def get_pv_data_pair(self, pv_name): 
         # Prepare global variables for write access
         global signal_data1, signal_data2
         global first_collected, second_collected
@@ -462,6 +462,7 @@ class BSA_TESTER:
                 pv.remove_callback(cb) 
             else:
                 # Empty PV
+                print("PV is empty!!")
                 return
         elif bsa_usr_buff:
             # Trigger BSA data acquisition
@@ -573,7 +574,7 @@ class BSA_TESTER:
 
     def check_waveform_signal_change_in_time(self, pv_name):
         # Sample PV data
-        self.get_pv_data_pair_v2(pv_name)
+        self.get_pv_data_pair(pv_name)
         # Check for NaN values
         self.check_pv_for_nan_data(pv_name)
         # Check if both samples are populated with data
@@ -585,7 +586,7 @@ class BSA_TESTER:
     
     def check_scalar_signal_change_in_time(self, pv_name):
         # Sample PV data
-        self.get_pv_data_pair_v2(pv_name)
+        self.get_pv_data_pair(pv_name)
         # Check for NaN values
         self.check_pv_for_nan_data(pv_name)
         # Check if both samples are populated with data
@@ -596,7 +597,7 @@ class BSA_TESTER:
     def check_waveform_PID_update_rate(self, pv_name):
         if "PID" in pv_name and "HST" in pv_name:
             # Sample PID PV data
-            self.get_pv_data_v2(pv_name)
+            self.get_pv_data_single(pv_name)
             # Extract PID update rate
             rate = self.compute_waveform_PID_update_rate(pv_name)
             # Compare with expected PID update rate
@@ -606,14 +607,14 @@ class BSA_TESTER:
         if "PID" in pv_name and "HST" not in pv_name:
             if not bsa_usr_buff:
                 # Sample PID PV data
-                self.get_pv_data_pair_v2(pv_name)
+                self.get_pv_data_pair(pv_name)
                 # Extract PID update rate
                 rate = self.compute_scalar_PID_update_rate() 
                 # Compare with expected PID update rate
                 self.compare_scalar_PID_update_rate(pv_name, rate)
             elif bsa_usr_buff:
                 # To verify PID rate, get one waveform sample with consecutive PIDs
-                self.get_pv_data_v2(pv_name)
+                self.get_pv_data_single(pv_name)
                 # Extract PID update rate
                 rate = self.compute_waveform_PID_update_rate(pv_name)
                 # Compare with expected PID update rate
@@ -621,7 +622,7 @@ class BSA_TESTER:
 
     def check_number_of_elements_in_waveform_pv(self, pv_name, samples):
         # Sample PV data
-        self.get_pv_data_v2(pv_name)
+        self.get_pv_data_single(pv_name)
         # Compare number of elements
         if np.array(signal_data1).size > samples:
             logger.error("[ERROR]    - " + pv_name + " contains more than expected values.")
@@ -632,7 +633,7 @@ class BSA_TESTER:
     
     def check_number_of_elements_in_scalar_pv(self, pv_name, samples):
         # Sample PV data
-        self.get_pv_data_v2(pv_name)
+        self.get_pv_data_single(pv_name)
         # Compare number of elements
         if np.array(signal_data1).size > 1:
             logger.error("[ERROR]    - " + pv_name + " contains more than expected values.")
