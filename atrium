@@ -320,8 +320,9 @@ class BSA_TESTER:
             signal_data2 = value
 
     def on_monitor_single_usr_buff(self, pv_name=None, value=None, **kw):
-        global signal_data1 
-        signal_data1 = value
+        if not first_collected:
+            global signal_data1 
+            signal_data1 = value
 
     def on_monitor_consec_scalar_usr_buff(self, pv_name=None, value=None, **kw):
         global signal_data1 
@@ -335,37 +336,8 @@ class BSA_TESTER:
         elif not second_collected:
             global signal_data2
             signal_data2 = value
-            print("Second sample  --> "+str(value))
+            print("Second sample  --> "+str(value)+"\n")
 
-    def get_pv_data_single_deprecated(self, pv_name): 
-        # Prepare global variables for write access 
-        global first_collected
-        if not bsa_usr_buff:
-            # System buffer
-            first_collected = False
-            # Read the same way for waveform or scalar PV
-            camonitor(pv_name, callback=self.on_monitor_single_sys_buff)
-            while not first_collected:
-                time.sleep(sys_buff_wait_time)
-            camonitor_clear(pv_name)
-        elif bsa_usr_buff:
-            # Trigger BSA data acquisition
-            if bsss_usr_buff_acq:
-                global signal_data1
-                signal_data1 = []
-                camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
-            else:
-                camonitor(pv_name, callback=self.on_monitor_single_usr_buff)
-            self.trigger_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                     bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
-            time.sleep(bsa_usr_buff_wait_time_per_sample * bsa_usr_buff_samples)
-            print("Reading sample --> "+str(signal_data1))
-            # Clear camonitor
-            camonitor_clear(pv_name)
-            # Reset BSA user buffer
-            self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                   bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
-   
     def get_pv_data_single(self, pv_name):
         # Prepare global variables for write access 
         global signal_data1
@@ -404,44 +376,6 @@ class BSA_TESTER:
             self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
                                    bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
 
-    def get_pv_data_pair_deprecated(self, pv_name): 
-        # Prepare global variables for write access
-        global signal_data1, signal_data2
-        global first_collected, second_collected
-        signal_data1 = []
-        signal_data2 = []
-        first_collected = second_collected = False
-        if not bsa_usr_buff:
-            # System buffer
-            camonitor(pv_name, callback=self.on_monitor_pair_sys_buff)
-            while (not first_collected) or (not second_collected):
-                time.sleep(sys_buff_wait_time)
-            camonitor_clear(pv_name)
-        elif bsa_usr_buff:
-            # Trigger BSA data acquisition
-            camonitor(pv_name, callback=self.on_monitor_pair_usr_buff)
-            self.trigger_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                     bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
-            while np.array(signal_data1).size < bsa_usr_buff_samples: 
-               time.sleep(bsa_usr_buff_wait_time_per_sample * bsa_usr_buff_samples)
-               if (bsss_usr_buff_acq and np.array(signal_data1).size == 1):
-                   break
-            first_collected = True
-            # Trigger second BSA data acquisition
-            self.trigger_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                     bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
-            while np.array(signal_data2).size < bsa_usr_buff_samples: 
-               time.sleep(bsa_usr_buff_wait_time_per_sample * bsa_usr_buff_samples)
-               if (bsss_usr_buff_acq and np.array(signal_data2).size == 1):
-                   break
-            second_collected = True
-            # Clear camonitor
-            camonitor_clear(pv_name)
-            # Reset BSA user buffer
-            self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                   bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
-            print()
-
     def get_pv_data_pair(self, pv_name): 
         # Prepare global variables for write access
         global signal_data1, signal_data2
@@ -460,7 +394,7 @@ class BSA_TESTER:
                     time.sleep(sys_buff_wait_time)
                 pv.remove_callback(cb) 
                 print("First sample   --> "+str(signal_data1))
-                print("Second sample  --> "+str(signal_data2))
+                print("Second sample  --> "+str(signal_data2)+"\n")
             else:
                 # Empty PV
                 print("PV is empty!!")
@@ -621,25 +555,25 @@ class BSA_TESTER:
                 # Compare with expected PID update rate
                 self.compare_waveform_PID_update_rate(pv_name, rate)
 
-    def check_number_of_elements_in_waveform_pv(self, pv_name, samples):
+    def check_number_of_elements_usr_buff_waveform(self, pv_name, samples):
         # Sample PV data
         self.get_pv_data_single(pv_name)
         # Compare number of elements
         if np.array(signal_data1).size > samples:
-            logger.error("[ERROR]    - " + pv_name + " contains more than expected values.")
+            logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
         elif np.array(signal_data1).size < samples:
-            logger.error("[ERROR]    - " + pv_name + " contains fewer than expected values.")
+            logger.error("[ERROR]    - " + pv_name + " contains fewer than the expected number of elements.")
         else:
             print("PV number of elements:       OK (" + str(np.array(signal_data1).size) + ")")
     
-    def check_number_of_elements_in_scalar_pv(self, pv_name, samples):
+    def check_number_of_elements_usr_buffer_scalar(self, pv_name, samples):
         # Sample PV data
         self.get_pv_data_single(pv_name)
         # Compare number of elements
         if np.array(signal_data1).size > 1:
-            logger.error("[ERROR]    - " + pv_name + " contains more than expected values.")
+            logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
         elif np.array(signal_data1).size < 1:
-            logger.error("[ERROR]    - " + pv_name + " contains fewer than expected values.")
+            logger.error("[ERROR]    - " + pv_name + " contains fewer than the expected number of elements.")
         elif np.array(signal_data1).size == 1:
             print("PV number of elements:       OK (" + str(np.array(signal_data1).size) + ")")
 
@@ -791,7 +725,7 @@ class BSA_TESTER:
         self.core_test_user_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, \
         bsa_usr_buff_idx_range, bsa_usr_buff_fixed_rates, \
         self.check_waveform_signal_change_in_time, self.check_waveform_PID_update_rate, \
-        self.check_number_of_elements_in_waveform_pv, samples=2, bsss=False) 
+        self.check_number_of_elements_usr_buff_waveform, samples=2, bsss=False) 
     
     def test_bsss_user_buffers(self):
         print("Checking BSSS user buffers.")
@@ -799,7 +733,7 @@ class BSA_TESTER:
         self.core_test_user_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, \
         bsss_usr_buff_idx_range, bsss_usr_buff_fixed_rates, \
         self.check_scalar_signal_change_in_time, self.check_scalar_PID_update_rate, \
-        self.check_number_of_elements_in_scalar_pv, samples=1, bsss=True) 
+        self.check_number_of_elements_usr_buff_scalar, samples=1, bsss=True) 
     
     def test_bsa_fault_buffers(self):
         print("Checking BSA fault buffers.")
