@@ -379,20 +379,18 @@ class BSA_TESTER:
    
     def get_pv_data_v2(self, pv_name):
         # Prepare global variables for write access 
+        global signal_data1
         global first_collected, first_collected_acq_lock
+        signal_data1 = []
         if not bsa_usr_buff:
             # System buffer
-            first_collected = False
-            first_collected_acq_lock = True
-            # Read the same way for waveform or scalar PV
-            camonitor(pv_name, callback=self.on_monitor_single_sys_buff)
-            while not first_collected:
-                time.sleep(sys_buff_wait_time)
-            camonitor_clear(pv_name)
+            pv = PV(pv_name)
+            pv.wait_for_connection(timeout=None)
+            signal_data1 = pv.get(timeout=None, use_monitor=False)
+            print("Reading sample --> "+str(signal_data1))
         elif bsa_usr_buff:
             # Trigger BSA data acquisition
             if bsss_usr_buff_acq:
-                global signal_data1
                 signal_data1 = []
                 camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
             else:
@@ -460,9 +458,12 @@ class BSA_TESTER:
         signal_data1 = []
         signal_data2 = []
         first_collected = second_collected = False
-        first_collected_acq_lock = second_collected_acq_lock = False 
+        first_collected_acq_lock = second_collected_acq_lock = True 
         if not bsa_usr_buff:
             # System buffer
+            #pv = PV(pv_name)
+            #pv.wait_for_connection(timeout=None)
+            #signal_data1 = pv.get(timeout=None, use_monitor=False)
             first_collected_acq_lock = second_collected_acq_lock = True 
             camonitor(pv_name, callback=self.on_monitor_pair_sys_buff)
             while (not first_collected) or (not second_collected):
@@ -837,8 +838,8 @@ if __name__ == "__main__":
     tester.test_bsa_system_buffers  ()
     tester.test_bsss_system_buffers ()
     
-    tester.test_bsa_user_buffers    ()
-    tester.test_bsss_user_buffers   ()
+#    tester.test_bsa_user_buffers    ()
+#    tester.test_bsss_user_buffers   ()
     
 #    tester.test_bsa_fault_buffers   ()
-#    tester.test_bsss_fault_buffers  ()
+#    tester.test_bsss_fault_buffers 
