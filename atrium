@@ -689,25 +689,27 @@ class BSA_TESTER:
         caput(meascnt_pv, str(samples), wait=True)
     
     def core_test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_check_signal_change_in_time, fcn_check_PID_update_rate):
-        for signal_pv in signal_pvs:
-            for dest_suffix in system_buff_dest_suffixes:
-                print("\n--------------------------------------------")
-                print("Testing " + dest_suffix + " for " + signal_pv)
-                print("--------------------------------------------")
-                for freq_suffix, freq in system_buff_freq_suffixes.items():
-                    for var_type in variable_type_suffixes: 
-                        # Form the PV name
-                        pv = signal_pv + var_type + dest_suffix + freq_suffix
-                        print("\n*****<< " + pv + " >>*****\n")
-                       
-                        # Check if the user requested a subset of system buffers to test
-                        proceed = False
-                        for k in sys_buff_list:
-                            if not proceed:
-                                proceed = k in pv
+        for dest_suffix in system_buff_dest_suffixes:
+            for freq_suffix, freq in system_buff_freq_suffixes.items():
+                
+                # Check if the user requested a subset of system buffers to test
+                proceed = False
+                for k in sys_buff_list:
+                    if not proceed:
+                        proceed = k in (dest_suffix + freq_suffix)
                         
-                        # Start running tests for PV
-                        if proceed or sys_buff_list == []:
+                if proceed or sys_buff_list == []:
+                    print("\n--------------")
+                    print("Testing " + dest_suffix + freq_suffix) 
+                    print("--------------")
+
+                    for signal_pv in signal_pvs:
+                        for var_type in variable_type_suffixes: 
+                            # Form the PV name
+                            pv = signal_pv + var_type + dest_suffix + freq_suffix
+                            print("\n*****<< " + pv + " >>*****\n")
+                       
+                            # Start running tests for PV
                             # Test 1: check for signal change over time
                             fcn_check_signal_change_in_time(pv_name=pv)
                         
@@ -726,11 +728,11 @@ class BSA_TESTER:
         bsss_usr_buff_acq = bsss 
         
         # Main loop to process all user buffer PVs
-        for signal_pv in signal_pvs:
-            for idx in usr_buff_idx_range:
-                print("\n----------------------------------------------")
-                print("Testing User Buffer " + str(idx) + " for " + signal_pv)
-                print("----------------------------------------------")
+        for idx in usr_buff_idx_range:
+            print("\n------------------------")
+            print("Testing User Buffer " + str(idx))
+            print("------------------------")
+            for signal_pv in signal_pvs:
                 for var_type in variable_type_suffixes:
                     # Form the PV name
                     pv = signal_pv + var_type + str(idx)
@@ -768,9 +770,9 @@ class BSA_TESTER:
 
     def core_test_fault_buffers(self, signal_pvs, variable_type_suffixes, flt_buff_name_suffixes, fcn_check_signal_change_in_time):
         for signal_pv in signal_pvs:
-            print("\n----------------------------------------------")
+            print("\n---------------------------------------------")
             print("Testing " + " for " + signal_pv)
-            print("----------------------------------------------")
+            print("---------------------------------------------")
             for var_type in variable_type_suffixes:
                 for flt_idx_suffix in flt_buff_name_suffixes:
                     # Form the PV name
