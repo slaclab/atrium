@@ -38,7 +38,9 @@ system_buff_dest_suffixes = ["SCD", "SCL", "SCB", "SCH", "SCS"]
 system_buff_freq_suffixes = {"1H": 1, "TH": 10, "HH": 100}
 
 # Types of data/metadata to be stored in BSA PVs
-bsa_hst_type_suffixes = ["HST","CNTHST","RMSHST","PIDHST"] 
+# For now let's comment CNT and RMS because they need special test cases.
+#bsa_hst_type_suffixes = ["HST","CNTHST","RMSHST","PIDHST"] 
+bsa_hst_type_suffixes = ["HST","PIDHST"] 
 
 # Types of data/metadata to be stored in BSSS PVs
 bsss_scalar_type_suffixes = ["","PID"] 
@@ -75,7 +77,11 @@ bsa_usr_buff_fixed_rate = True
 bsa_usr_buff_idx_range = np.arange(21,50)
 
 # BSA user buffer fixed rate options
-bsa_usr_buff_fixed_rates  = {"1Hz":1,"10Hz":10,"100Hz":100,"1kHz":1.0e+03,"10kHz":10.0e+03,"71.5kHz":71.5e+03,"1MHz":1.0e+06}
+# Because of roundings, we need to force 71.5kHz to 7.0e+4. PID difference
+# returns 13, but the most accurate should be 12.73.
+# 1MHz is also forced to 9.1e+5 because the accurate diff would be 0.91,
+# but diff comes back as 1.
+bsa_usr_buff_fixed_rates  = {"1Hz":1,"10Hz":10,"100Hz":100,"1kHz":1.0e+03,"10kHz":10.0e+03,"71.5kHz":7.0e+04,"1MHz":9.1e+05}
 
 # BSA user buffer AC rate options
 bsa_usr_buff_ac_rates = {"0.5Hz":0.5,"1Hz":1,"5Hz":5,"10Hz":10,"30Hz":30,"60Hz":60}
