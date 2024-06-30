@@ -116,6 +116,9 @@ tpg = ""
 # This may be modified by the user
 sys_buff_list = []
 
+# Environment path variables from st.cmd and envPaths
+cmd_env_paths = {}
+
 ##  TPG Table Below
 ##  -------     ------------------------
 ##  TPG ioc     TPG Prefix 
@@ -207,6 +210,87 @@ class CMD_SEEKER:
 
     def __init__(self):
         print("Initializing CMD_SEEKER\n")
+    
+    def apply_substitutions(self, line):
+        # Search for ${MACRONAME}
+        global cmd_env_paths
+        pattern = "\$\{(\w*)\}"
+        macros = re.findall(pattern, line)
+        # Search for macros present in the line and replace with data
+        # available from the dictionary.
+        for macro in macros:
+            if macro in cmd_env_paths:
+                value = cmd_env_paths[macro]
+                line = line.replace("${" + macro + "}", value)
+        return line
+
+    def flatten_cmds(self, primary_path, secondary_path):
+        # Primary path is the current/main directory as we scan the parent st.cmd
+        # Secondary path is the relative path of the included cmd that is read recursively
+        # We keep track of both b/c secondary paths are usually given relative to primary paths.
+        # Read parent cmd lines
+        path = primary_path + '/' + secondary_path
+        #print('Opening cmd file: ', path)
+        f = open(path, 'r')                                                                                                
+        parent_lines = f.readlines()
+        f.close()
+        merged_lines = []
+        current_dir = primary_path
+        # Define the cmd include pattern we are looking for
+        cmd_pattern = ' *<{1} +.+'
+        cd_pattern  = ' *cd +.+'
+        # Now scan every line and look for cmd includes
+        global cmd_env_paths
+        for line in parent_lines:
+            #print('Reading line: ', line)
+            # Check if we include a cmd file
+            cmd_match = re.findall(cmd_pattern, line)
+            # Check if we change current directory
+            cd_match = re.findall(cd_pattern, line)
+            if "epicsEnvSet" in line:
+                # Format of epicsEnvSet is
+                # epicsEnvSet("TOP"   ,"/afs/slac/g/lcls/epics/iocCommon/...")
+                env_def = line.split("(")
+                env_def = env_def[1].split(",")
+                env_key = env_def[0].split('"')[1]
+                env_value = env_def[1].split('"')[1]
+                # Expand macros if they exist
+                env_value = self.apply_substitutions(env_value)
+                cmd_env_paths[env_key] = env_value
+                #print('Appending line: ', line)
+                merged_lines.append(line)
+            elif len(cd_match) > 0:
+                cd_match = cd_match[0]
+                cd_match = cd_match.split()
+                cd_match = cd_match[len(cd_match)-1]
+                # Check if the new path includes an environment variable
+                cd_match = self.apply_substitutions(cd_match)
+                # Now assign the new current directory
+                current_dir = cd_match
+                #print('Changing directory: ', current_dir)
+                #print('Current directory : ', current_dir)
+                #print('Appending line: ', line)
+                merged_lines.append(line)
+            elif len(cmd_match) > 0 and \
+            '${ACF_INIT}' not in cmd_match[0] and \
+            '${LOG_INIT}' not in cmd_match[0]:
+                # Extract path of the cmd file
+                cmd_match = cmd_match[0]
+                cmd_match = cmd_match.split()
+                cmd_match = cmd_match[len(cmd_match)-1]
+                #print('Include cmd file : ', cmd_match)
+                #print('Current directory: ', current_dir)
+                # Read child cmd file and append lines
+                [children_lines, directory] = self.flatten_cmds(current_dir, cmd_match)
+                current_dir = directory
+                for entry in children_lines:
+                    merged_lines.append(entry)
+            else:
+                #print('Appending line: ', line)
+                merged_lines.append(line)
+        
+        # Return merged content
+        return merged_lines, current_dir
 
     def get_cmd(self):
         global cpu,tpg
@@ -274,8 +358,10 @@ class CMD_SEEKER:
         
         if st_cmd_exists:
             # Read the entire st.cmd, expanding sub cmd files
-            st_cmd = subprocess.run(["/afs/slac/u/gu/egumtow/scripts/iocsh_lines.sh", ioc_path], capture_output=True)
-            st_cmd = st_cmd.stdout.decode().split("\n")
+            #st_cmd = subprocess.run(["/afs/slac/u/gu/egumtow/scripts/iocsh_lines.sh", ioc_path], capture_output=True)
+            #st_cmd = st_cmd.stdout.decode().split("\n")
+            st_cmd, path = self.flatten_cmds(os.path.dirname(ioc_path), "./st.cmd")
+            st_cmd = [e.split("\n", 1)[0] for e in st_cmd]
             return st_cmd
         else:
             print("I'm sorry, I can't seem to find the st.cmd in " + ioc_path)
@@ -294,15 +380,16 @@ class CMD_PARSER:
     def __init__(self):
         print("Initializing CMD_PARSER\n")
 
-    def apply_substitutions(self, line, envSets):
+    def apply_substitutions(self, line):
         # Search for ${MACRONAME}
+        global cmd_env_paths
         pattern = "\$\{(\w*)\}"
         macros = re.findall(pattern, line)
         # Search for macros present in the line and replace with data
         # available from the dictionary.
         for macro in macros:
-            if macro in envSets:
-                value = envSets[macro]
+            if macro in cmd_env_paths:
+                value = cmd_env_paths[macro]
                 line = line.replace("${" + macro + "}", value)
         return line
 
@@ -322,31 +409,22 @@ class CMD_PARSER:
         service_pv_prefixes[service].append(dev + ":" + secn)
 
     def parse_cmd(self, st_cmd):
-        envSets = {}
+        # Initialize cmd_env_paths dictionary
+        global cmd_env_paths
+        cmd_env_paths = {}
         for line in st_cmd:
-            if "epicsEnvSet" in line:
-                # Format of epicsEnvSet is
-                # epicsEnvSet("ST_CMD"   ,"startup.cmd")
-                env_def = line.split("(")
-                env_def = env_def[1].split(",")
-                env_key = env_def[0].split('"')[1]
-                env_value = env_def[1].split('"')[1]
-                # Expand macros if they exist
-                env_value = self.apply_substitutions(env_value, envSets)
-                envSets[env_key] = env_value
             if "bsa.db" in line:
-                line = self.apply_substitutions(line, envSets)
+                line = self.apply_substitutions(line)
                 self.extract_service_pv_prefix(line, "BSA")
             if "bsss.db" in line:
-                line = self.apply_substitutions(line, envSets)
+                line = self.apply_substitutions(line)
                 self.extract_service_pv_prefix(line, "BSSS")
             if "bsas.db" in line:
-                line = self.apply_substitutions(line, envSets)
+                line = self.apply_substitutions(line)
                 self.extract_service_pv_prefix(line, "BSAS")
             if "bld.db" in line:
-                line = self.apply_substitutions(line, envSets)
+                line = self.apply_substitutions(line)
                 self.extract_service_pv_prefix(line, "BLD")
-        #print(envSets)
         #print(caget(service_pv_prefixes["BSA"][0] + "PIDSCD1H"))
         #print(service_pv_prefixes)
         print("st.cmd reading complete.\n")
