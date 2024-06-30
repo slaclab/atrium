@@ -362,6 +362,7 @@ class CMD_SEEKER:
             #st_cmd = st_cmd.stdout.decode().split("\n")
             st_cmd, path = self.flatten_cmds(os.path.dirname(ioc_path), "./st.cmd")
             st_cmd = [e.split("\n", 1)[0] for e in st_cmd]
+            st_cmd = [e for e in st_cmd if e != '']
             return st_cmd
         else:
             print("I'm sorry, I can't seem to find the st.cmd in " + ioc_path)
