@@ -52,7 +52,7 @@ acq_type_suffixes = bsa_hst_type_suffixes + bsss_scalar_type_suffixes
 bsa_usr_buff = False 
 
 # BSA user buffer index (index, 21...49)
-bsa_usr_buff_idx = 21 
+bsa_usr_buff_idx = 21
 
 # BSA user buffer rate 
 bsa_usr_buff_rate = "1Hz" 
@@ -159,6 +159,11 @@ class ARG_PARSER:
     """
 
     def __init__(self):
+        """
+        Reads command line input info and sets to global variables.
+        Info: cpu, tpg, user buffer indices, user buffer indices, user buffer sample number, system buffer list
+        """
+
         # List argument options
         print("Initializing ARG_PARSER\n")
         parser = argparse.ArgumentParser(description='Process test configuration.')
@@ -197,6 +202,13 @@ class ARG_PARSER:
         if args.sys_buff_list:
             sys_buff_list = args.sys_buff_list
 
+        print("-----cpu:", cpu) #test
+        print("-----tpg:", tpg) #test
+        print("-----bsa user buffer index range:", bsa_usr_buff_idx_range) #test
+        print("-----bsss user buffer index range", bsss_usr_buff_idx_range) #test
+        print("-----bsa user buffer samples:", bsa_usr_buff_samples_num_elem_test) #test
+        print("-----sys buffer list", sys_buff_list) #test
+
 #************ CMD_SEEKER Class ************#
 class CMD_SEEKER:
     """
@@ -209,6 +221,13 @@ class CMD_SEEKER:
         print("Initializing CMD_SEEKER\n")
 
     def get_cmd(self):
+        """
+        Receives input for cpu and tpg if it does not exist, prompts user to choose IOC to test.
+        Gets st.cmd from the IOC
+
+        :return: st.cmd file for the selected IOC
+        :rtype: list of strings
+        """
         global cpu,tpg
         if cpu == '':
             cpu = input("CPU name where the IOC to be tested is running (e.g. cpu-b084-sp18, etc.):\n")
@@ -231,10 +250,12 @@ class CMD_SEEKER:
         screen_lines = ssh_ls.stdout.decode()
         # Separate the line breaks from screen -ls
         screen_lines = screen_lines.split("\n")
+        print("screen lines:", screen_lines) #test
         
         print("IOCs found running in " + cpu + ":")
         
         iii = 1
+
         iocs = []
         for line in screen_lines:
             # We look only on lines that have the string ioc
@@ -258,7 +279,6 @@ class CMD_SEEKER:
                 print(ioc_choice + " is not a valid number. Try again, please.")
             else:
                 valid_choice = True
-        print()
         print("Please, wait a few seconds, I'm reading the st.cmd file.")
         
         st_cmd_exists = False
@@ -276,6 +296,9 @@ class CMD_SEEKER:
             # Read the entire st.cmd, expanding sub cmd files
             st_cmd = subprocess.run(["/afs/slac/u/gu/egumtow/scripts/iocsh_lines.sh", ioc_path], capture_output=True)
             st_cmd = st_cmd.stdout.decode().split("\n")
+            f = open("stcopy.cmd","w")
+            f.write(str(st_cmd))
+            f.close()
             return st_cmd
         else:
             print("I'm sorry, I can't seem to find the st.cmd in " + ioc_path)
@@ -295,6 +318,14 @@ class CMD_PARSER:
         print("Initializing CMD_PARSER\n")
 
     def apply_substitutions(self, line, envSets):
+        """
+        If macro found in the env value already exists in the env set, replace macro in the env value.
+
+        :param line: the env value to check for macros
+        :param envSets: env set with macro definitions
+        :return: env value with macros replaced
+        :rtype: string
+        """
         # Search for ${MACRONAME}
         pattern = "\$\{(\w*)\}"
         macros = re.findall(pattern, line)
@@ -307,6 +338,9 @@ class CMD_PARSER:
         return line
 
     def extract_service_pv_prefix(self, line, service):
+        """
+        
+        """
         # We are processing a line like
         # dbLoadRecords("db/bsa.db", "DEV=EM2K0:XGMD:HPS,PORT=bsaPort,BSAKEY=YFIXEDPAMC1,SECN=POSY")
         # and want to extract all pairs macro=value present in the line.
@@ -322,6 +356,9 @@ class CMD_PARSER:
         service_pv_prefixes[service].append(dev + ":" + secn)
 
     def parse_cmd(self, st_cmd):
+        """
+                
+        """
         envSets = {}
         for line in st_cmd:
             if "epicsEnvSet" in line:
@@ -329,8 +366,8 @@ class CMD_PARSER:
                 # epicsEnvSet("ST_CMD"   ,"startup.cmd")
                 env_def = line.split("(")
                 env_def = env_def[1].split(",")
-                env_key = env_def[0].split('"')[1]
-                env_value = env_def[1].split('"')[1]
+                env_key = env_def[0].split('"')[1] # example: ST_CMD
+                env_value = env_def[1].split('"')[1] # example: startup.cmd
                 # Expand macros if they exist
                 env_value = self.apply_substitutions(env_value, envSets)
                 envSets[env_key] = env_value
@@ -695,6 +732,17 @@ class BSA_TESTER:
         caput(meascnt_pv, str(samples), wait=True)
     
     def core_test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_check_signal_change_in_time, fcn_check_PID_update_rate):
+        """
+        For all combinations of destination and frequencies for system buffers, test two functions:
+        - Signal is changing over time
+        - PID changes as expected
+    
+        :param signal_pvs: 
+        :param variable_type_suffixes:
+        :param fcn_check_signal_change_in_time:
+        :param fcn_check_PID_update_rate:
+         """
+        print("signal pvs--------:",signal_pvs)
         for dest_suffix in system_buff_dest_suffixes:
             for freq_suffix, freq in system_buff_freq_suffixes.items():
                 
@@ -789,6 +837,9 @@ class BSA_TESTER:
                     fcn_check_signal_change_in_time(pv)
 
     def test_bsa_system_buffers(self):
+        """
+        Check BSA system buffers. 
+        """
         print("Checking BSA system buffers.")
         list_of_signal_pvs = service_pv_prefixes["BSA"]
         self.core_test_system_buffers(list_of_signal_pvs, bsa_hst_type_suffixes, \
@@ -846,10 +897,10 @@ if __name__ == "__main__":
     tester = BSA_TESTER()
 
     tester.test_bsa_system_buffers  ()
-    tester.test_bsss_system_buffers ()
+#    tester.test_bsss_system_buffers ()
     
-    tester.test_bsa_user_buffers    ()
-    tester.test_bsss_user_buffers   ()
+#    tester.test_bsa_user_buffers    ()
+#    tester.test_bsss_user_buffers   ()
     
 #    tester.test_bsa_fault_buffers   ()
 #    tester.test_bsss_fault_buffers  () 
