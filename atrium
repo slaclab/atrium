@@ -212,17 +212,42 @@ class CMD_SEEKER:
         print("Initializing CMD_SEEKER\n")
     
     def apply_substitutions(self, line):
+        # Initialize
+        value    = ''
+        values   = []
+        nline    = line
+        havePath = False 
         # Search for ${MACRONAME}
         global cmd_env_paths
         pattern = "\$\{(\w*)\}"
         macros = re.findall(pattern, line)
+        if '/' in line:
+            havePath = True
         # Search for macros present in the line and replace with data
         # available from the dictionary.
         for macro in macros:
             if macro in cmd_env_paths:
                 value = cmd_env_paths[macro]
-                line = line.replace("${" + macro + "}", value)
-        return line
+            elif macro in os.environ.keys():
+                value = os.environ[macro]
+            values.append(value)
+            nline = nline.replace("${" + macro + "}", value)
+        # Check path correctness (temporarily remove some characters first)
+        checked = nline
+        checked = checked.replace("(","")
+        checked = checked.replace(")","")
+        checked = checked.replace("\"","")
+        # Check if we have an incorrect path 
+        if not macros or (macros and ((havePath and os.path.exists(checked)) or not havePath)):
+            pass
+        else:
+            print('\n-----------------------------------------------------------------------------------')
+            print('Unexpected values for macros in path ' + line + ':\n')
+            for macro, value in zip(macros, values):
+                print(macro + ' : ' + value)
+            print('Please check path: ', nline)
+            print('-----------------------------------------------------------------------------------\n')
+        return nline
 
     def flatten_cmds(self, primary_path, secondary_path):
         # Primary path is the current/main directory as we scan the parent st.cmd
@@ -361,6 +386,11 @@ class CMD_SEEKER:
             #st_cmd = subprocess.run(["/afs/slac/u/gu/egumtow/scripts/iocsh_lines.sh", ioc_path], capture_output=True)
             #st_cmd = st_cmd.stdout.decode().split("\n")
             st_cmd, path = self.flatten_cmds(os.path.dirname(ioc_path), "./st.cmd")
+            # Write st.cmd file out
+            f = open('./merged.st.cmd', 'w')                                                                                                
+            f.writelines(st_cmd)
+            f.close()
+            # Now process lines a bit
             st_cmd = [e.split("\n", 1)[0] for e in st_cmd]
             st_cmd = [e for e in st_cmd if e != '']
             return st_cmd
@@ -382,6 +412,8 @@ class CMD_PARSER:
         print("Initializing CMD_PARSER\n")
 
     def apply_substitutions(self, line):
+        # Initialize
+        value = ''
         # Search for ${MACRONAME}
         global cmd_env_paths
         pattern = "\$\{(\w*)\}"
@@ -391,7 +423,9 @@ class CMD_PARSER:
         for macro in macros:
             if macro in cmd_env_paths:
                 value = cmd_env_paths[macro]
-                line = line.replace("${" + macro + "}", value)
+            elif macro in os.environ.keys():
+                value = os.environ[macro]
+            line = line.replace("${" + macro + "}", value)
         return line
 
     def extract_service_pv_prefix(self, line, service):
@@ -916,7 +950,7 @@ if __name__ == "__main__":
     # Create a seeker object for .cmd files
     seeker = CMD_SEEKER()
     cmd = seeker.get_cmd()
-    
+
     # Create a parser object for .cmd files
     parser = CMD_PARSER()
     parser.parse_cmd(cmd)
