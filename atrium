@@ -808,7 +808,7 @@ class USR_BUFF_TESTER:
         bsss_usr_buff_fixed_rates, samples=1, bsss=True)
 
 #************ BSA_TESTER Class ************#
-class BSA_TESTER:
+class SYS_BUFF_TESTER:
     """
     
     This class will test the BSA buffers.
@@ -842,23 +842,6 @@ class BSA_TESTER:
             signal_data1 = signal_data2
             signal_data2 = value
 
-    def on_monitor_single_usr_buff(self, pv_name=None, value=None, **kw):
-        if not first_collected:
-            global signal_data1 
-            signal_data1 = value
-
-    def on_monitor_consec_scalar_usr_buff(self, pvname=None, value=None, **kw):
-        global signal_data1 
-        signal_data1.append(value)
-
-    def on_monitor_pair_usr_buff(self, pvname=None, value=None, **kw):
-        if not first_collected:
-            global signal_data1 
-            signal_data1 = value
-        elif not second_collected:
-            global signal_data2
-            signal_data2 = value
-
     def get_pv_data_single(self, pv_name):
         # Prepare global variables for write access 
         global signal_data1
@@ -880,22 +863,6 @@ class BSA_TESTER:
                 # Empty PV
                 print("PV is empty!!")
                 return
-        elif bsa_usr_buff:
-            # Trigger BSA data acquisition
-            if bsss_usr_buff_acq:
-                signal_data1 = []
-                camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
-            else:
-                camonitor(pv_name, callback=self.on_monitor_single_usr_buff)
-            self.trigger_user_buffer(bsa_usr_buff_control_pv)
-            print("Acquiring new sample...")
-            time.sleep(bsa_usr_buff_wait_time_per_sample * bsa_usr_buff_samples)
-            print("Reading sample --> "+str(signal_data1))
-            # Clear camonitor
-            camonitor_clear(pv_name)
-            # Reset BSA user buffer
-            self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                   bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
 
     def get_pv_data_pair(self, pv_name): 
         # Prepare global variables for write access
@@ -920,32 +887,6 @@ class BSA_TESTER:
                 # Empty PV
                 print("PV is empty!!")
                 return
-        elif bsa_usr_buff:
-            # Trigger BSA data acquisition
-            camonitor(pv_name, callback=self.on_monitor_pair_usr_buff)
-            print("Acquiring first sample...")
-            self.trigger_user_buffer(bsa_usr_buff_control_pv)
-            while np.array(signal_data1).size < bsa_usr_buff_samples: 
-                time.sleep(bsa_usr_buff_wait_time_per_sample * bsa_usr_buff_samples)
-                if (bsss_usr_buff_acq and np.array(signal_data1).size == 1):
-                    break
-            first_collected = True
-            print("First sample   --> "+str(signal_data1))
-            # Trigger second BSA data acquisition
-            self.trigger_user_buffer(bsa_usr_buff_control_pv)
-            print("Acquiring second sample...")
-            while np.array(signal_data2).size < bsa_usr_buff_samples:
-                time.sleep(bsa_usr_buff_wait_time_per_sample * bsa_usr_buff_samples)
-                if (bsss_usr_buff_acq and np.array(signal_data2).size == 1):
-                    break
-            second_collected = True
-            print("Second sample  --> "+str(signal_data2))
-            # Clear camonitor
-            camonitor_clear(pv_name)
-            # Reset BSA user buffer
-            self.reset_user_buffer(bsa_usr_buff_rate_mode_pv, bsa_usr_buff_fixed_rate_pv, \
-                                   bsa_usr_buff_ac_rate_pv, bsa_usr_buff_control_pv)
-            print()
 
     def compute_waveform_PID_update_rate(self):
         #PID data from farthest away to most recent
@@ -976,19 +917,6 @@ class BSA_TESTER:
                 logger.error("             Please make sure that sampling of data is done at consistent intervals.")
                 logger.error("             Ignore this error if firmware/IOC has just been rebooted.")
             elif not np.equal(pid_update_rate, pv_update_rate):
-                logger.error("[ERROR] -    " + pv_name + " the PID update rate (" + str(pid_update_rate) + \
-                "Hz) doesn't match the PV update rate of " + str(pv_update_rate) + "Hz")
-                logger.error("             Please make sure that sampling of data is done at consistent intervals.")
-            else:
-                print("PID Update Rate:             OK  (" + str(pid_update_rate) + "Hz)")
-        elif bsa_usr_buff:
-            # We have a user buffer, extract update rate from buffer rate dictionary
-            if bsa_usr_buff_fixed_rate:
-                pv_update_rate  = bsa_usr_buff_fixed_rates[bsa_usr_buff_rate]
-            else:
-                pv_update_rate  = bsa_usr_buff_ac_rates[bsa_usr_buff_rate]           
-            pid_update_rate = core_linac_freq / diff
-            if not np.equal(pid_update_rate, pv_update_rate):
                 logger.error("[ERROR] -    " + pv_name + " the PID update rate (" + str(pid_update_rate) + \
                 "Hz) doesn't match the PV update rate of " + str(pv_update_rate) + "Hz")
                 logger.error("             Please make sure that sampling of data is done at consistent intervals.")
@@ -1081,80 +1009,6 @@ class BSA_TESTER:
                 rate = self.compute_waveform_PID_update_rate()
                 # Compare with expected PID update rate
                 self.compare_waveform_PID_update_rate(pv_name, rate)
-
-    def check_number_of_elements_usr_buff_waveform(self, pv_name, samples):
-        # Sample PV data
-        self.get_pv_data_single(pv_name)
-        # Compare number of elements
-        if np.array(signal_data1).size > samples:
-            logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
-        elif np.array(signal_data1).size < samples:
-            logger.error("[ERROR]    - " + pv_name + " contains fewer than the expected number of elements.")
-        else:
-            print("PV number of elements:       OK (" + str(np.array(signal_data1).size) + ")")
-
-    def check_number_of_elements_usr_buff_scalar(self, pv_name, samples):
-        # Sample PV data
-        self.get_pv_data_single(pv_name)
-        # Compare number of elements
-        if np.array(signal_data1).size > 1:
-            logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
-        elif np.array(signal_data1).size < 1:
-            logger.error("[ERROR]    - " + pv_name + " contains fewer than the expected number of elements.")
-        elif np.array(signal_data1).size == 1:
-            print("PV number of elements:       OK (" + str(np.array(signal_data1).size) + ")")
-
-    def trigger_user_buffer(self, control_pv):
-        # Trigger BSA data acquisition
-        caput(control_pv, "OFF", wait=True)
-        caput(control_pv, "ON", wait=True)
-
-    def reset_user_buffer(self, rate_mode_pv, fixed_rate_pv, ac_rate_pv, control_pv):
-        # Reset buffer rate and control settings
-        caput(rate_mode_pv, "Fixed Rate", wait=True)
-        caput(fixed_rate_pv, list(bsa_usr_buff_fixed_rates.keys())[0], wait=True)
-        caput(ac_rate_pv, list(bsa_usr_buff_ac_rates.keys())[0], wait=True)
-        caput(control_pv, "OFF", wait=True)
-
-    def prep_user_buffer(self, index, rate=list(bsa_usr_buff_fixed_rates.keys())[0], fixed_rate=True, samples=1):
-        # Assign global user buffer index
-        global bsa_usr_buff_idx
-        bsa_usr_buff_idx = index
-        # Assign global user buffer rate
-        global bsa_usr_buff_rate
-        bsa_usr_buff_rate = rate
-        # Assign global user buffer fixed rate flag
-        global bsa_usr_buff_fixed_rate
-        bsa_usr_buff_fixed_rate = fixed_rate
-        # Assign global user buffer samples to acquire
-        global bsa_usr_buff_samples
-        bsa_usr_buff_samples = samples
-        # Assign global user buffer control and settings PVs
-        global bsa_usr_buff_rate_mode_pv
-        global bsa_usr_buff_ac_rate_pv
-        global bsa_usr_buff_fixed_rate_pv
-        global bsa_usr_buff_control_pv
-        # Get PVs to control and settings
-        bsa_buff_prefix=tpg.replace('TPG','BSA',1)    
-        control_pv = bsa_buff_prefix + ':' + str(bsa_usr_buff_idx) + ':CTRL'
-        meascnt_pv = bsa_buff_prefix + ':' + str(bsa_usr_buff_idx) + ':MEASCNT'
-        rate_mode_pv = bsa_buff_prefix + ':' + str(bsa_usr_buff_idx) + ':RATEMODE'           
-        ac_rate_pv = bsa_buff_prefix + ':' + str(bsa_usr_buff_idx) + ':ACRATE'           
-        fixed_rate_pv = bsa_buff_prefix + ':' + str(bsa_usr_buff_idx) + ':FIXEDRATE'
-        # Assign control and others settings to global PVs too
-        bsa_usr_buff_rate_mode_pv = rate_mode_pv
-        bsa_usr_buff_ac_rate_pv = ac_rate_pv
-        bsa_usr_buff_fixed_rate_pv = fixed_rate_pv
-        bsa_usr_buff_control_pv = control_pv
-        # Set the update rate in the user buffer in TPG
-        if bsa_usr_buff_fixed_rate:
-            caput(rate_mode_pv, "Fixed Rate", wait=True)
-            caput(fixed_rate_pv, rate, wait=True)
-        else:
-            caput(rate_mode_pv, "AC Rate", wait=True)
-            caput(ac_rate_pv, rate, wait=True)
-        # Assign number of samples
-        caput(meascnt_pv, str(samples), wait=True)
     
     def core_test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_check_signal_change_in_time, fcn_check_PID_update_rate):
         for dest_suffix in system_buff_dest_suffixes:
@@ -1185,56 +1039,6 @@ class BSA_TESTER:
                                 print("\nChecking PID rate:\n")
                                 fcn_check_PID_update_rate(pv_name=pv) 
 
-    def core_test_user_buffers(self, signal_pvs, variable_type_suffixes, usr_buff_idx_range, usr_buff_fixed_rates, fcn_check_signal_change_in_time, fcn_check_PID_update_rate, fcn_check_number_of_elements, samples, bsss):
-        # Set BSA user buffer flag
-        global bsa_usr_buff
-        bsa_usr_buff = True
-        
-        # Set BSSS user buffer acq flag
-        global bsss_usr_buff_acq
-        bsss_usr_buff_acq = bsss 
-        
-        # Main loop to process all user buffer PVs
-        for idx in usr_buff_idx_range:
-            print("\n------------------------")
-            print("Testing User Buffer " + str(idx))
-            print("------------------------")
-            for signal_pv in signal_pvs:
-                for var_type in variable_type_suffixes:
-                    # Form the PV name
-                    pv = signal_pv + var_type + str(idx)
-                    print("\n*****<< " + pv + " >>*****\n")
-                    # Test 1: check for signal change over time
-                    
-                    self.prep_user_buffer(idx, samples=samples)
-                    fcn_check_signal_change_in_time(pv_name=pv)
-                        
-                    # Test 2: check if the PID changes as expected (for a PID-type PV only)
-                    if "PID" in pv:
-                        print("\nChecking PID rate:\n")
-                        for rate in usr_buff_fixed_rates.keys():
-                            print("Fixed Rate = " + rate)
-                            if bsss:
-                                self.prep_user_buffer(idx, rate, samples=2)
-                            else:
-                                self.prep_user_buffer(idx, rate, samples=samples)
-                            fcn_check_PID_update_rate(pv_name=pv)
-
-#                        for rate in bsa_usr_buff_ac_rates.keys():
-#                            print("AC    Rate = " + rate)
-#                            if bsss:
-#                                self.prep_user_buffer(idx, rate, fixed_rate=False, samples=2)
-#                            else:
-#                                self.prep_user_buffer(idx, rate, fixed_rate=False, samples=samples)
-#                            fcn_check_PID_update_rate(pv_name=pv)
-                    
-                    # Test 3: check if the acquired number of samples matches what is expected
-                    self.prep_user_buffer(idx, samples=samples)
-                    fcn_check_number_of_elements(pv_name=pv, samples=samples)
-   
-        bsa_usr_buff      = False 
-        bsss_usr_buff_acq = False 
-
     def core_test_fault_buffers(self, signal_pvs, variable_type_suffixes, flt_buff_name_suffixes, fcn_check_signal_change_in_time):
         for signal_pv in signal_pvs:
             print("\n---------------------------------------------")
@@ -1260,14 +1064,6 @@ class BSA_TESTER:
         list_of_signal_pvs = service_pv_prefixes["BSSS"]
         self.core_test_system_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, \
         self.check_scalar_signal_change_in_time, self.check_scalar_PID_update_rate) 
-    
-    def test_bsss_user_buffers(self):
-        print("Checking BSSS user buffers.")
-        list_of_signal_pvs = service_pv_prefixes["BSSS"]
-        self.core_test_user_buffers(list_of_signal_pvs, bsss_scalar_type_suffixes, \
-        bsss_usr_buff_idx_range, bsss_usr_buff_fixed_rates, \
-        self.check_scalar_signal_change_in_time, self.check_scalar_PID_update_rate, \
-        self.check_number_of_elements_usr_buff_scalar, samples=1, bsss=True)
     
     def test_bsa_fault_buffers(self):
         print("Checking BSA fault buffers.")
@@ -1296,10 +1092,10 @@ if __name__ == "__main__":
     parser.parse_cmd(cmd)
      
     # Create a tester object for BSA system buffers
-    # tester = BSA_TESTER()
+    system_buffer_tester = SYS_BUFF_TESTER()
 
-    # tester.test_bsa_system_buffers  ()
-    # tester.test_bsss_system_buffers ()
+    system_buffer_tester.test_bsa_system_buffers  ()
+    system_buffer_tester.test_bsss_system_buffers ()
     
     # Create a tester object for BSA user buffers
     user_buffer_tester = USR_BUFF_TESTER()
@@ -1307,5 +1103,5 @@ if __name__ == "__main__":
     user_buffer_tester.test_bsa_user_buffers()
     user_buffer_tester.test_bsss_user_buffers()
     
-#    tester.test_bsa_fault_buffers   ()
-    # tester.test_bsss_fault_buffers() 
+#   tester.test_bsa_fault_buffers   ()
+#   tester.test_bsss_fault_buffers() 
