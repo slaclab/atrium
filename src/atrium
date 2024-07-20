@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+import os
+import re
+import sys
+import time
+import math
+import logging
+import argparse
+import subprocess
+import numpy as np
+
+from dataclasses import dataclass
+from epics import caget, caput, camonitor, camonitor_clear, PV
+
+import settings
+import usr_buff_tester
+import sys_buff_tester
+
+############################################
+#            README - HOW TO RUN           #
+############################################
+# E.g. Run on cpu-b084-sp18 as shown below:
+#./atrium --usr_buffs 21 22 23 --usr_buff_samples 10 --sys_buffs SCH1H SCLHH --cpu cpu-b084-sp18 --tpg TPG:SYS0:2
+# Another example:
+#./atrium --cpu cpu-b084-sp17 --tpg TPG:B084:2 --usr_buffs 21 --sys_buffs SCS --ioc sioc-b084-gd01
+
+
+#TODO: case when cpu name is wrong
+# Pass cpu name as argument
+# Make number of bsa items to test an argument
+
+
+############################################
+#           Classes follow below           #
+############################################
+
+#************ ARG PARSER Class ************#
+class ARG_PARSER:
+    """
+    
+    This class will parse out the arguments.
+
+    """
+
+    def __init__(self):
+
+        # List argument options
+        print("Initializing ARG_PARSER\n")
+        parser = argparse.ArgumentParser(description='Process test configuration.')
+        parser.add_argument('--cpu', dest='cpu', default='cpu-b084-sp18', help='CPU hosting the IOC to test (default: cpu-b084-sp18)')
+        parser.add_argument('--ioc', dest='ioc', default='sioc-b084-sp17', help='IOC to test (default: sioc-b084-ts05')
+        parser.add_argument('--tpg', dest='tpg', default='sioc-b084-ts05', help='IOC to test (default: sioc-b084-ts05)')
+        parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='user buffers to test (default: unspecified for all)')
+        parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='system buffers to test (default: unspecified for all)')
+        parser.add_argument('--usr_buff_samples', dest='usr_buff_samples', default=2, help='user buffer samples to acquire (default for waveform: 2)')
+        
+        # Parse out arguments
+        args = parser.parse_args()
+       
+        # Set the cpu name
+        if args.cpu:
+            settings.cpu = args.cpu
+
+        # Set ioc name
+        if args.ioc:
+            settings.ioc = args.ioc
+
+        # Set the TPG prefix
+        if args.tpg:
+            print("args.tpg: ", args.tpg)
+            settings.tpg = args.tpg
+
+        # Set the user buffer indices
+        if args.usr_buff_list:
+            settings.bsa_usr_buff_idx_range = args.usr_buff_list
+            settings.bsss_usr_buff_idx_range = settings.bsa_usr_buff_idx_range
+        
+        # Set the user buffer samples for the number of elements test
+        if args.usr_buff_samples:
+            settings.bsa_usr_buff_samples_num_elem_test = int(args.usr_buff_samples)
+
+        # Set the system buffers
+        if args.sys_buff_list:
+            settings.sys_buff_list = args.sys_buff_list
+
+
+#************ CMD_SEEKER Class ************#
+class CMD_SEEKER:
+    """
+    
+    This class will look for the st.cmd script.
+
+    """
+
+    def __init__(self):
+        print("Initializing CMD_SEEKER\n")
+    
+    def apply_substitutions(self, line):
+        # Initialize
+        value    = ''
+        values   = []
+        nline    = line
+        havePath = False 
+        # Search for ${MACRONAME}
+        pattern = "\$\{(\w*)\}"
+        macros = re.findall(pattern, line)
+        if '/' in line:
+            havePath = True
+        # Search for macros present in the line and replace with data
+        # available from the dictionary.
+        for macro in macros:
+            if macro in settings.cmd_env_paths:
+                value = settings.cmd_env_paths[macro]
+            elif macro in os.environ.keys():
+                value = os.environ[macro]
+            values.append(value)
+            nline = nline.replace("${" + macro + "}", value)
+        # Check path correctness (temporarily remove some characters first)
+        checked = nline
+        checked = checked.replace("(","")
+        checked = checked.replace(")","")
+        checked = checked.replace("\"","")
+        # Check if we have an incorrect path 
+        if not macros or (macros and ((havePath and os.path.exists(checked)) or not havePath)):
+            pass
+        else:
+            print('\n-----------------------------------------------------------------------------------')
+            print('Unexpected values for macros in path ' + line + ':\n')
+            for macro, value in zip(macros, values):
+                print(macro + ' : ' + value)
+            print('Please check path: ', nline)
+            print('-----------------------------------------------------------------------------------\n')
+        return nline
+
+    def flatten_cmds(self, primary_path, secondary_path):
+        # Primary path is the current/main directory as we scan the parent st.cmd
+        # Secondary path is the relative path of the included cmd that is read recursively
+        # We keep track of both b/c secondary paths are usually given relative to primary paths.
+        # Read parent cmd lines
+        path = primary_path + '/' + secondary_path
+        #print('Opening cmd file: ', path)
+        f = open(path, 'r')                                                                                                
+        parent_lines = f.readlines()
+        f.close()
+        merged_lines = []
+        current_dir = primary_path
+        # Define the cmd include pattern we are looking for
+        cmd_pattern = ' *<{1} +.+'
+        cd_pattern  = ' *cd +.+'
+        # Now scan every line and look for cmd includes
+        for line in parent_lines:
+            #print('Reading line: ', line)
+            # Check if we include a cmd file
+            cmd_match = re.findall(cmd_pattern, line)
+            # Check if we change current directory
+            cd_match = re.findall(cd_pattern, line)
+            if "epicsEnvSet" in line:
+                # Format of epicsEnvSet is
+                # epicsEnvSet("TOP"   ,"/afs/slac/g/lcls/epics/iocCommon/...")
+                env_def = line.split("(")
+                env_def = env_def[1].split(",")
+                env_key = env_def[0].split('"')[1]
+                env_value = env_def[1].split('"')[1]
+                # Expand macros if they exist
+                env_value = self.apply_substitutions(env_value)
+                settings.cmd_env_paths[env_key] = env_value
+                #print('Appending line: ', line)
+                merged_lines.append(line)
+            elif len(cd_match) > 0:
+                cd_match = cd_match[0]
+                cd_match = cd_match.split()
+                cd_match = cd_match[len(cd_match)-1]
+                # Check if the new path includes an environment variable
+                cd_match = self.apply_substitutions(cd_match)
+                # Now assign the new current directory
+                current_dir = cd_match
+                #print('Changing directory: ', current_dir)
+                #print('Current directory : ', current_dir)
+                #print('Appending line: ', line)
+                merged_lines.append(line)
+            elif len(cmd_match) > 0 and \
+            '${ACF_INIT}' not in cmd_match[0] and \
+            '${LOG_INIT}' not in cmd_match[0]:
+                # Extract path of the cmd file
+                cmd_match = cmd_match[0]
+                cmd_match = cmd_match.split()
+                cmd_match = cmd_match[len(cmd_match)-1]
+                #print('Include cmd file : ', cmd_match)
+                #print('Current directory: ', current_dir)
+                # Read child cmd file and append lines
+                [children_lines, directory] = self.flatten_cmds(current_dir, cmd_match)
+                current_dir = directory
+                for entry in children_lines:
+                    merged_lines.append(entry)
+            else:
+                #print('Appending line: ', line)
+                merged_lines.append(line)
+        
+        # Return merged content
+        return merged_lines, current_dir
+
+    def get_iocs(self): 
+        #Run screen -ls in cpu
+        ssh_ls = subprocess.run(["ssh", "laci@" + settings.cpu, "screen -ls"], capture_output=True)
+        screen_lines = ssh_ls.stdout.decode()
+        # Separate the line breaks from screen -ls
+        screen_lines = screen_lines.split("\n")
+
+        iocs = []
+        for line in screen_lines:
+            # We look only on lines that have the string ioc
+            if "ioc" in line:
+                # screen -ls returns with the following format:
+                # 2158.sioc-b084-gd02     (Detached)
+                settings.ioc = line.split(".")
+                settings.ioc = settings.ioc[1].split("\t")
+                settings.ioc = settings.ioc[0]
+                iocs.append(settings.ioc)
+        return iocs
+
+    def print_iocs(self, iocs):
+        print("IOCSs found running in " + settings.cpu + ":")
+        ioc_index = 1
+        for ioc_name in iocs:
+            print("( " + str(ioc_index) + " ) " + ioc_name)
+            ioc_index += 1
+
+    def get_cmd(self):
+        if settings.cpu == '':
+            settings.cpu = input("CPU name where the IOC to be tested is running (e.g. cpu-b084-sp18, etc.):\n")
+
+        if settings.tpg == '':
+            settings.tpg = input("TPG PV prefix for the particular test stand (e.g. TPG:SYS0:1,TPG:SYS0:2,etc.):\n")
+
+        #if len(sys.argv) >= 3:
+        #    cpu = str(sys.argv[1])
+        #    tpg = str(sys.argv[2])
+        #elif len(sys.argv) >= 2:
+        #    cpu = str(sys.argv[1])
+        #    tpg = input("TPG PV prefix for the particular test stand:\n")
+        #else:
+        #    cpu = input("CPU name where the IOC to be tested is running (e.g. cpu-b084-sp18, etc.):\n")
+        #    tpg = input("TPG PV prefix for the particular test stand (e.g. TPG:SYS0:1,TPG:SYS0:2,etc.):\n")
+
+        iocs = self.get_iocs()
+        
+        if settings.ioc in iocs:
+            print("IOC " + settings.ioc + " was found running in cpu.\n")
+        else:
+            print("IOC was either not provided or not found.\n")
+            self.print_iocs(iocs)
+            valid_choice = False
+
+            while not valid_choice:
+                ioc_choice = input("\nChoose the number of the IOC to test: ")
+                try:
+                    settings.ioc = iocs[int(ioc_choice) - 1]
+                except:
+                    print(ioc_choice + " is not a valid number. Try again, please.")
+                else:
+                    valid_choice = True
+
+        print("Please, wait a few seconds, I'm reading the st.cmd file.")
+        
+        st_cmd_exists = False
+        
+        ioc_path = os.environ["IOC"] + "/" + settings.ioc + "/iocSpecificRelease/iocBoot/"
+        path_exists = os.path.exists(ioc_path)
+        if path_exists:
+            for root, dirs, files in os.walk(ioc_path):
+                for dir in dirs:
+                    if dir == settings.ioc:
+                        ioc_path = os.path.join(root, dir, "st.cmd")
+                        st_cmd_exists = True
+        
+        if st_cmd_exists:
+            # Read the entire st.cmd, expanding sub cmd files
+            #st_cmd = subprocess.run(["/afs/slac/u/gu/egumtow/scripts/iocsh_lines.sh", ioc_path], capture_output=True)
+            #st_cmd = st_cmd.stdout.decode().split("\n")
+            st_cmd, path = self.flatten_cmds(os.path.dirname(ioc_path), "./st.cmd")
+            # Write st.cmd file out
+            f = open('./merged.st.cmd', 'w')                                                                                                
+            f.writelines(st_cmd)
+            f.close()
+            # Now process lines a bit
+            st_cmd = [e.split("\n", 1)[0] for e in st_cmd]
+            st_cmd = [e for e in st_cmd if e != '']
+            return st_cmd
+        else:
+            print("I'm sorry, I can't seem to find the st.cmd in " + ioc_path)
+            print("How is this possible?")
+            print("I give up and I'm exiting.")
+            exit(1)
+
+#************ CMD_PARSER Class ************#
+class CMD_PARSER:
+    """
+    
+    This class will parse the st.cmd script.
+
+    """
+    
+    def __init__(self):
+        print("Initializing CMD_PARSER\n")
+
+    def apply_substitutions(self, line):
+        # Initialize
+        value = ''
+        # Search for ${MACRONAME}
+        pattern = "\$\{(\w*)\}"
+        macros = re.findall(pattern, line)
+        # Search for macros present in the line and replace with data
+        # available from the dictionary.
+        for macro in macros:
+            if macro in settings.cmd_env_paths:
+                value = settings.cmd_env_paths[macro]
+            elif macro in os.environ.keys():
+                value = os.environ[macro]
+            line = line.replace("${" + macro + "}", value)
+        return line
+
+    def extract_service_pv_prefix(self, line, service):
+        # We are processing a line like
+        # dbLoadRecords("db/bsa.db", "DEV=EM2K0:XGMD:HPS,PORT=bsaPort,BSAKEY=YFIXEDPAMC1,SECN=POSY")
+        # and want to extract all pairs macro=value present in the line.
+        pattern = '[",]?([\w]+)=([\w:]*)[,"]'
+        pairs = re.findall(pattern, line)
+        dev = secn = ""
+        for macro, value in pairs:
+            if macro == "DEV":
+                dev = value
+            if macro == "SECN":
+                secn = value
+
+        settings.service_pv_prefixes[service].append(dev + ":" + secn)
+
+    def parse_cmd(self, st_cmd):
+        # Initialize cmd_env_paths dictionary
+        for line in st_cmd:
+            if "bsa.db" in line:
+                line = self.apply_substitutions(line)
+                self.extract_service_pv_prefix(line, "BSA")
+            if "bsss.db" in line:
+                line = self.apply_substitutions(line)
+                self.extract_service_pv_prefix(line, "BSSS")
+            if "bsas.db" in line:
+                line = self.apply_substitutions(line)
+                self.extract_service_pv_prefix(line, "BSAS")
+            if "bld.db" in line:
+                line = self.apply_substitutions(line)
+                self.extract_service_pv_prefix(line, "BLD")
+        #print(caget(service_pv_prefixes["BSA"][0] + "PIDSCD1H"))
+        #print(service_pv_prefixes)
+        print("st.cmd reading complete.\n")
+
+############################################
+#         __main__ block goes here         #
+############################################
+if __name__ == "__main__":
+
+    # Create an arg parser object for user input 
+    argparse = ARG_PARSER()
+
+    # Create a seeker object for .cmd files
+    seeker = CMD_SEEKER()
+    cmd = seeker.get_cmd()
+
+    # Create a parser object for .cmd files
+    parser = CMD_PARSER()
+    parser.parse_cmd(cmd)
+     
+    # Create a tester object for BSA system buffers
+    system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
+
+    system_buffer_tester.test_bsa_system_buffers  ()
+    system_buffer_tester.test_bsss_system_buffers ()
+    
+    # Create a tester object for BSA user buffers
+    user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
+
+    user_buffer_tester.test_bsa_user_buffers()
+    user_buffer_tester.test_bsss_user_buffers()
+    
+#   tester.test_bsa_fault_buffers   ()
+#   tester.test_bsss_fault_buffers() 
