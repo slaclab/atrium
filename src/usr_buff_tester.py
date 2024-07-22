@@ -3,12 +3,13 @@ import numpy as np
 import settings
 
 from dataclasses import dataclass
+from typing import List
 from epics import caget, caput, camonitor, camonitor_clear, PV
 
 @dataclass
 class PV_DATA:
-    signal_data1 : np.ndarray
-    signal_data2 : np.ndarray
+    signal_data1 : List
+    signal_data2 : List
     
 class USR_BUFF_TESTER:
     """
@@ -157,7 +158,7 @@ class USR_BUFF_TESTER:
 #### DATA ACQUISITION FUNCTIONS
     def get_pvs_data_pair(self, pvlist):
         for pv_name in pvlist:
-            self.user_buffer_pv_data[pv_name] = PV_DATA(np.array([]),np.array([]))
+            self.user_buffer_pv_data[pv_name] = PV_DATA([],[])
             camonitor(pv_name, callback=self.on_monitor_pair_usr_buffer)
 
         self.sample_number = 1
@@ -178,12 +179,13 @@ class USR_BUFF_TESTER:
             time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
             all_pvs_data_acquired = True
             for pv_name in pvlist:
+
                 if settings.bsss_usr_buff_acq:
-                    if (wait_count == 1 and np.array(self.user_buffer_pv_data[pv_name].signal_data1).size != 1) \
-                    or (wait_count == 2 and np.array(self.user_buffer_pv_data[pv_name].signal_data2).size != 1):
+                    if (wait_count == 1 and len(self.user_buffer_pv_data[pv_name].signal_data1) != 1) \
+                    or (wait_count == 2 and len(self.user_buffer_pv_data[pv_name].signal_data2) != 1):
                         all_pvs_data_acquired = False
-                elif (wait_count == 1 and np.array(self.user_buffer_pv_data[pv_name].signal_data1).size < settings.bsa_usr_buff_samples) \
-                or (wait_count == 2 and np.array(self.user_buffer_pv_data[pv_name].signal_data2).size < settings.bsa_usr_buff_samples):
+                elif (wait_count == 1 and len(self.user_buffer_pv_data[pv_name].signal_data1) < settings.bsa_usr_buff_samples) \
+                or (wait_count == 2 and len(self.user_buffer_pv_data[pv_name].signal_data2) < settings.bsa_usr_buff_samples):
                     all_pvs_data_acquired = False
             if all_pvs_data_acquired:
                 break
@@ -191,7 +193,7 @@ class USR_BUFF_TESTER:
     def get_pvs_data_single(self, pid_pvlist, samples, idx, usr_buff_fixed_rates):
         self.sample_number = 0
         for pv_name in pid_pvlist:
-            self.user_buffer_pid_pv_data[pv_name] = PV_DATA(np.full((len(usr_buff_fixed_rates), samples), np.nan),np.array([]))
+            self.user_buffer_pid_pv_data[pv_name] = PV_DATA([[] for _ in range(len(usr_buff_fixed_rates))],[])
 
             if settings.bsss_usr_buff_acq:
                 camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
@@ -212,8 +214,8 @@ class USR_BUFF_TESTER:
     def get_pvs_new_sample(self, pid_pvlist, samples, idx):
         print("Acquiring new samples for PV's.")
         for pv_name in pid_pvlist:
-            self.user_buffer_new_sample_data[pv_name] = PV_DATA(np.array([]),np.array([]))
-            camonitor(pv_name, callback=self.on_monitor_single_data_usr_buffer)
+            self.user_buffer_new_sample_data[pv_name] = PV_DATA([],[])
+            camonitor(pv_name, callback=self.on_monitor_new_sample_usr_buffer)
 
         self.prep_user_buffer(idx, samples = samples)
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
@@ -222,26 +224,20 @@ class USR_BUFF_TESTER:
         for pv_name in pid_pvlist:
             camonitor_clear(pv_name)
 
-    def on_monitor_single_data_usr_buffer(self, pvname=None, value=None, **kw):
-        if settings.bsss_usr_buff_acq:
-            value = np.ravel(value)
-        self.user_buffer_new_sample_data[pvname].signal_data1 = np.array(value)
+    def on_monitor_new_sample_usr_buffer(self, pvname=None, value=None, **kw):
+        self.user_buffer_new_sample_data[pvname].signal_data1 = [value]
 
     def on_monitor_single_usr_buffer(self, pvname=None, value=None, **kw):
-        self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1] = np.array(value)
+        self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1] = value
 
     def on_monitor_consec_scalar_usr_buff(self, pvname=None, value=None, **kw):
-        if np.isnan(self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1, 0]):
-            self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1, 0] = np.array(value)
-        elif np.isnan(self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1, 1]):
-            self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1, 1] = np.array(value)
+        self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1].append(value)
 
     def on_monitor_pair_usr_buffer(self, pvname=None, value=None, **kw):
-        value = np.ravel(value)
         if self.sample_number == 1:
-            self.user_buffer_pv_data[pvname].signal_data1 = np.array(value)
+            self.user_buffer_pv_data[pvname].signal_data1 = [value]
         else: #sample number = 2
-            self.user_buffer_pv_data[pvname].signal_data2 = np.array(value)
+            self.user_buffer_pv_data[pvname].signal_data2 = [value]
 
 #### TESTING FUNCTIONS
 
