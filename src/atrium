@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
 import os
 import re
-import sys
-import time
-import math
-import logging
 import argparse
 import subprocess
-import numpy as np
-
-from dataclasses import dataclass
-from epics import caget, caput, camonitor, camonitor_clear, PV
 
 import settings
 import usr_buff_tester
@@ -67,7 +59,6 @@ class ARG_PARSER:
 
         # Set the TPG prefix
         if args.tpg:
-            print("args.tpg: ", args.tpg)
             settings.tpg = args.tpg
 
         # Set the user buffer indices
@@ -212,10 +203,10 @@ class CMD_SEEKER:
             if "ioc" in line:
                 # screen -ls returns with the following format:
                 # 2158.sioc-b084-gd02     (Detached)
-                settings.ioc = line.split(".")
-                settings.ioc = settings.ioc[1].split("\t")
-                settings.ioc = settings.ioc[0]
-                iocs.append(settings.ioc)
+                ioc = line.split(".")
+                ioc = ioc[1].split("\t")
+                ioc = ioc[0]
+                iocs.append(ioc)
         return iocs
 
     def print_iocs(self, iocs):
