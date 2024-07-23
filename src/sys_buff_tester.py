@@ -61,14 +61,22 @@ class SYS_BUFF_TESTER:
             if np.array(pv.value).size > 0:
                 # Scalar/Waveform PV
                 cb=pv.add_callback(callback=self.on_monitor_single_sys_buff)
+                loop = 0
                 while (not first_collected):
                     time.sleep(settings.sys_buff_wait_time)
+                    loop += 1
+                    if loop > settings.loop_timeout:
+                        self.logger.error("[ERROR] -    Loop timed out. Could not acquire PID data for " + pv_name)
+                        self.logger.error("             Is PV empty?")
+                        return
+
                 pv.remove_callback(cb) 
                 print("Reading sample --> "+str(signal_data1))
+                return True
             else:
                 # Empty PV
-                print("PV is empty!!")
-                return
+                self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
+                return False
 
     def get_pv_data_pair(self, pv_name): 
         # Prepare global variables for write access
@@ -84,15 +92,22 @@ class SYS_BUFF_TESTER:
             if np.array(pv.value).size > 0:
                 # Scalar/Waveform PV
                 cb=pv.add_callback(callback=self.on_monitor_pair_sys_buff)
+                loop = 0
                 while (not first_collected) or (not second_collected):
                     time.sleep(settings.sys_buff_wait_time)
+                    loop += 1
+                    if loop > settings.loop_timeout:
+                        self.logger.error("[ERROR] -    Could not acquire data for " + pv_name)
+                        self.logger.error("             Loop timed out. Is PV empty?")
+                        return
                 pv.remove_callback(cb) 
                 print("First sample   --> "+str(signal_data1))
                 print("Second sample  --> "+str(signal_data2))
+                return True
             else:
                 # Empty PV
-                print("PV is empty!!")
-                return
+                self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
+                return False
 
     def compute_waveform_PID_update_rate(self):
         #PID data from farthest away to most recent
@@ -141,8 +156,10 @@ class SYS_BUFF_TESTER:
              (not isinstance(signal_data2, (list, tuple, np.ndarray)) and (np.array(signal_data2).size == 0))):
             self.logger.error("[ERROR] -    " + pv_name + " didn't bring any data (empty).")
             self.logger.error("             Is BSA working?")
+            return False
         else:
             print("PV Populated With Data:      OK")
+            return True
 
     def check_pair_for_diff_pv_data(self, pv_name):
         # Check if the bsa buffers changed in time.
@@ -170,11 +187,13 @@ class SYS_BUFF_TESTER:
 
     def check_waveform_signal_change_in_time(self, pv_name):
         # Sample PV data
-        self.get_pv_data_pair(pv_name)
-        # Check for NaN values
-        self.check_pv_for_nan_data(pv_name)
+        success = self.get_pv_data_pair(pv_name)
+        if not success:
+            return
         # Check if both samples are populated with data
         self.check_pair_for_packed_pv_data(pv_name)
+        # Check for NaN values
+        self.check_pv_for_nan_data(pv_name)
         # Check if the bsa buffers changed in time.
         self.check_pair_for_diff_pv_data(pv_name)
         # Check to see if we always get the same value in the latest sample 
@@ -182,18 +201,23 @@ class SYS_BUFF_TESTER:
     
     def check_scalar_signal_change_in_time(self, pv_name):
         # Sample PV data
-        self.get_pv_data_pair(pv_name)
-        # Check for NaN values
-        self.check_pv_for_nan_data(pv_name)
+        success = self.get_pv_data_pair(pv_name)
+        if not success:
+            return
         # Check if both samples are populated with data
         self.check_pair_for_packed_pv_data(pv_name)
+        # Check for NaN values
+        self.check_pv_for_nan_data(pv_name)
         # Check if the bsa buffers changed in time.
         self.check_pair_for_diff_pv_data(pv_name)
+
     
     def check_waveform_PID_update_rate(self, pv_name):
         if "PID" in pv_name and "HST" in pv_name:
             # Sample PID PV data
-            self.get_pv_data_single(pv_name)
+            success = self.get_pv_data_single(pv_name)
+            if not success:
+                return
             # Extract PID update rate
             rate = self.compute_waveform_PID_update_rate()
             # Compare with expected PID update rate
@@ -203,14 +227,18 @@ class SYS_BUFF_TESTER:
         if "PID" in pv_name and "HST" not in pv_name:
             if not settings.bsa_usr_buff:
                 # Sample PID PV data
-                self.get_pv_data_pair(pv_name)
+                success = self.get_pv_data_pair(pv_name)
+                if not success:
+                    return
                 # Extract PID update rate
                 rate = self.compute_scalar_PID_update_rate() 
                 # Compare with expected PID update rate
                 self.compare_scalar_PID_update_rate(pv_name, rate)
             elif settings.bsa_usr_buff:
                 # To verify PID rate, get one waveform sample with consecutive PIDs
-                self.get_pv_data_single(pv_name)
+                success = self.get_pv_data_single(pv_name)
+                if not success:
+                    return
                 # Extract PID update rate
                 rate = self.compute_waveform_PID_update_rate()
                 # Compare with expected PID update rate

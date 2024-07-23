@@ -56,7 +56,7 @@ class USR_BUFF_TESTER:
             pvlist, pid_pvlist = self.get_pv_lists(idx, signal_pvs, variable_type_suffixes)
 
             # Acquire data of all pv's that will be used for testing
-            self.get_pvs_data(idx, pvlist, pid_pvlist, samples, usr_buff_fixed_rates)
+            data_acquired = self.get_pvs_data(idx, pvlist, pid_pvlist, samples, usr_buff_fixed_rates)
 
             # Run tests for all user buffers
             self.run_tests(samples, pid_pvlist, usr_buff_fixed_rates)
@@ -173,8 +173,9 @@ class USR_BUFF_TESTER:
 
         for pv_name in pvlist:
             camonitor_clear(pv_name)
-
+        
     def wait(self, pvlist, wait_count):
+        loop = 0
         while True:
             time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
             all_pvs_data_acquired = True
@@ -189,6 +190,10 @@ class USR_BUFF_TESTER:
                     all_pvs_data_acquired = False
             if all_pvs_data_acquired:
                 break
+            loop += 1
+            if loop > settings.loop_timeout:
+                print("Loop timed out. Some PV arrays may not be filled.")
+                return
 
     def get_pvs_data_single(self, pid_pvlist, samples, idx, usr_buff_fixed_rates):
         self.sample_number = 0
@@ -225,7 +230,7 @@ class USR_BUFF_TESTER:
             camonitor_clear(pv_name)
 
     def on_monitor_new_sample_usr_buffer(self, pvname=None, value=None, **kw):
-        self.user_buffer_new_sample_data[pvname].signal_data1 = [value]
+        self.user_buffer_new_sample_data[pvname].signal_data1 = value
 
     def on_monitor_single_usr_buffer(self, pvname=None, value=None, **kw):
         self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1] = value
@@ -234,22 +239,29 @@ class USR_BUFF_TESTER:
         self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1].append(value)
 
     def on_monitor_pair_usr_buffer(self, pvname=None, value=None, **kw):
+        if settings.bsss_usr_buff_acq:
+            value = [value]
         if self.sample_number == 1:
-            self.user_buffer_pv_data[pvname].signal_data1 = [value]
+            self.user_buffer_pv_data[pvname].signal_data1 = value
         else: #sample number = 2
-            self.user_buffer_pv_data[pvname].signal_data2 = [value]
+            self.user_buffer_pv_data[pvname].signal_data2 = value
 
 #### TESTING FUNCTIONS
 
-    def check_signal_change_over_time(self, pv_name, pv_data): #check waveform signal change in time for pvlist
-        self.check_pv_for_nan_data(pv_name, pv_data)
+    def check_signal_change_over_time(self, pv_name, pv_data): 
         # Check if both samples are populated with data
-        self.check_pair_for_packed_pv_data(pv_name, pv_data)
+        empty = self.check_pair_for_packed_pv_data(pv_name, pv_data)
+        if empty:
+            print("PV is empty")
+            return
+        # Check for NaN values
+        self.check_pv_for_nan_data(pv_name, pv_data)
         # Check if the bsa buffers changed in time.
         self.check_pair_for_diff_pv_data(pv_name, pv_data)
         # Check to see if we always get the same value in the latest sample 
         if not settings.bsss_usr_buff_acq:
             self.check_pv_for_updated_data(pv_name, pv_data)
+
 
     def check_waveform_PID_update_rate(self, pv_name, usr_buff_fixed_rates):
         print("\nChecking PID rate:\n")
@@ -295,8 +307,10 @@ class USR_BUFF_TESTER:
              (not isinstance(pv_data.signal_data2, (list, tuple, np.ndarray)) and (np.array(pv_data.signal_data2).size == 0))):
             self.logger.error("[ERROR] -    " + pv_name + " didn't bring any data (empty).")
             self.logger.error("             Is BSA working?")
+            return True
         else:
             print("PV Populated With Data:      OK")
+            return False
 
     def check_pv_for_nan_data(self, pv_name, pv_data):
         # Check for at least one NaN value
@@ -309,7 +323,13 @@ class USR_BUFF_TESTER:
         # We have a user buffer, extract update rate from buffer rate dictionary  
         pv_update_rate = update_rate
         pid_update_rate = settings.core_linac_freq / diff
-        if not np.equal(pid_update_rate, pv_update_rate):
+        if diff == -1:
+            self.logger.error("[ERROR] -    " + pv_name + " PID diffs are not consistent between elements")
+            self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")
+            self.logger.error("             Ignore this error if firmware/IOC has just been rebooted.")
+        elif diff == -2:
+            self.logger.error("[ERROR] -    " + pv_name + " PID array is empty")
+        elif not np.equal(pid_update_rate, pv_update_rate):
             self.logger.error("[ERROR] -    " + pv_name + " the PID update rate (" + str(pid_update_rate) + \
             "Hz) doesn't match the PV update rate of " + str(pv_update_rate) + "Hz")
             self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")
@@ -318,6 +338,8 @@ class USR_BUFF_TESTER:
 
     def compute_PID_update_rate(self, pv_name, index):
         signal_data = self.user_buffer_pid_pv_data[pv_name].signal_data1[index]
+        if len(signal_data) == 0:
+            return -2
         print("Sample acquired --> " + str(signal_data))
         PID_data = list(reversed(signal_data))         
         prev_diff = PID_data[0] - PID_data[1]

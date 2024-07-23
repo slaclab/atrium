@@ -105,6 +105,9 @@ sys_buff_list = []
 # Environment path variables from st.cmd and envPaths
 cmd_env_paths = {}
 
+# Number of loops to wait for data acquisition before timing out
+loop_timeout = 3
+
 ##  TPG Table Below
 ##  -------     ------------------------
 ##  TPG ioc     TPG Prefix 
