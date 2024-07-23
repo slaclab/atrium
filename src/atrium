@@ -45,7 +45,9 @@ class ARG_PARSER:
         parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='user buffers to test (default: unspecified for all)')
         parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='system buffers to test (default: unspecified for all)')
         parser.add_argument('--usr_buff_samples', dest='usr_buff_samples', default=2, help='user buffer samples to acquire (default for waveform: 2)')
-        
+        # parser.add_argument('--usr_buff_max_time', dest='usr_buff_max_time', default=50, help='default buffer time')
+        parser.add_argument('--test_type', dest='test_type', default="both", help='sys: test system buffers, usr: test user buffers, both: test both')
+
         # Parse out arguments
         args = parser.parse_args()
        
@@ -70,9 +72,17 @@ class ARG_PARSER:
         if args.usr_buff_samples:
             settings.bsa_usr_buff_samples_num_elem_test = int(args.usr_buff_samples)
 
+        # Set max time (in seconds) for user buffer to get samples
+        # if args.usr_buff_max_time:
+        #     settings.usr_buff_max_time = int(args.usr_buff_max_time)
+
         # Set the system buffers
         if args.sys_buff_list:
             settings.sys_buff_list = args.sys_buff_list
+
+        # Set type of buffers to test
+        if args.test_type:
+            settings.test_type = args.test_type
 
 
 #************ CMD_SEEKER Class ************#
@@ -361,16 +371,18 @@ if __name__ == "__main__":
     parser.parse_cmd(cmd)
      
     # Create a tester object for BSA system buffers
-    system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
+    if settings.test_type == "sys" or settings.test_type == "both":
+        system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
 
-    system_buffer_tester.test_bsa_system_buffers  ()
-    system_buffer_tester.test_bsss_system_buffers ()
+        system_buffer_tester.test_bsa_system_buffers  ()
+        system_buffer_tester.test_bsss_system_buffers ()
     
     # Create a tester object for BSA user buffers
-    user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
+    if settings.test_type == "usr" or settings.test_type == "both":
+        user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
 
-    user_buffer_tester.test_bsa_user_buffers()
-    user_buffer_tester.test_bsss_user_buffers()
+        user_buffer_tester.test_bsa_user_buffers()
+        user_buffer_tester.test_bsss_user_buffers()
     
 #   tester.test_bsa_fault_buffers   ()
 #   tester.test_bsss_fault_buffers() 

@@ -44,8 +44,11 @@ bsa_usr_buff_rate = "1Hz"
 bsa_usr_buff_samples = 1                # initialize to a non-zero value
 bsa_usr_buff_samples_num_elem_test = 2  # at least two are needed for a waveform PV
 
+# BSA user buffer max time to wait acquiring samples (seconds)
+# bsa_buff_max_time = 50
+
 # Wait time for a BSA user buffer to acquire one sample
-bsa_usr_buff_wait_time_per_sample = 2 
+bsa_usr_buff_wait_time_per_sample = 1
 
 # BSA user buffer control and settings PVs
 bsa_usr_buff_rate_mode_pv  = ""
@@ -107,6 +110,10 @@ cmd_env_paths = {}
 
 # Number of loops to wait for data acquisition before timing out
 loop_timeout = 3
+
+# Test user buffer/sys buffer or both
+test_type = ""
+
 
 ##  TPG Table Below
 ##  -------     ------------------------

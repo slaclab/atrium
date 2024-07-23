@@ -176,8 +176,11 @@ class USR_BUFF_TESTER:
         
     def wait(self, pvlist, wait_count):
         loop = 0
+        # start = time.time()
+        # print("user buffer max time", settings.usr_buff_max_time)
         while True:
             time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
+
             all_pvs_data_acquired = True
             for pv_name in pvlist:
 
@@ -188,8 +191,11 @@ class USR_BUFF_TESTER:
                 elif (wait_count == 1 and len(self.user_buffer_pv_data[pv_name].signal_data1) < settings.bsa_usr_buff_samples) \
                 or (wait_count == 2 and len(self.user_buffer_pv_data[pv_name].signal_data2) < settings.bsa_usr_buff_samples):
                     all_pvs_data_acquired = False
-            if all_pvs_data_acquired:
+
+            elapsed = time.time()
+            if all_pvs_data_acquired or (elapsed - start) > settings.usr_buff_max_time:
                 break
+
             loop += 1
             if loop > settings.loop_timeout:
                 print("Loop timed out. Some PV arrays may not be filled.")
@@ -211,6 +217,7 @@ class USR_BUFF_TESTER:
             self.sample_number += 1
             self.prep_user_buffer(idx, rate, samples = samples)
             self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
+
             time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
 
         for pv_name in pid_pvlist:
@@ -261,7 +268,6 @@ class USR_BUFF_TESTER:
         # Check to see if we always get the same value in the latest sample 
         if not settings.bsss_usr_buff_acq:
             self.check_pv_for_updated_data(pv_name, pv_data)
-
 
     def check_waveform_PID_update_rate(self, pv_name, usr_buff_fixed_rates):
         print("\nChecking PID rate:\n")
