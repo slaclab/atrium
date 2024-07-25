@@ -45,7 +45,7 @@ class ARG_PARSER:
         parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='user buffers to test (default: unspecified for all)')
         parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='system buffers to test (default: unspecified for all)')
         parser.add_argument('--usr_buff_samples', dest='usr_buff_samples', default=2, help='user buffer samples to acquire (default for waveform: 2)')
-        # parser.add_argument('--usr_buff_max_time', dest='usr_buff_max_time', default=50, help='default buffer time')
+        parser.add_argument('--usr_buff_max_time', dest='usr_buff_max_time', default=10, help='max time for user buffer acquisition (seconds)')
         parser.add_argument('--test_type', dest='test_type', default="both", help='sys: test system buffers, usr: test user buffers, both: test both')
 
         # Parse out arguments
@@ -72,9 +72,9 @@ class ARG_PARSER:
         if args.usr_buff_samples:
             settings.bsa_usr_buff_samples_num_elem_test = int(args.usr_buff_samples)
 
-        # Set max time (in seconds) for user buffer to get samples
-        # if args.usr_buff_max_time:
-        #     settings.usr_buff_max_time = int(args.usr_buff_max_time)
+        # Set max time for user buffer to get samples (seconds)
+        if args.usr_buff_max_time:
+            settings.usr_buff_max_time = int(args.usr_buff_max_time)
 
         # Set the system buffers
         if args.sys_buff_list:

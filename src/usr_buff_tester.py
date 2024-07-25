@@ -164,43 +164,35 @@ class USR_BUFF_TESTER:
         self.sample_number = 1
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
         print("Acquiring first samples for PV's.")
-        self.wait(pvlist, wait_count = 1)
+        self.wait(pvlist, acquisition_num = 1)
 
         self.sample_number = 2
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
         print("Acquiring second samples for PV's.")
-        self.wait(pvlist, wait_count = 2)
+        self.wait(pvlist, acquisition_num = 2)
 
         for pv_name in pvlist:
             camonitor_clear(pv_name)
         
-    def wait(self, pvlist, wait_count):
+    def wait(self, pvlist, acquisition_num):
         loop = 0
-        # start = time.time()
-        # print("user buffer max time", settings.usr_buff_max_time)
-        while True:
-            time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
+        start = time.time()
 
-            all_pvs_data_acquired = True
-            for pv_name in pvlist:
-
-                if settings.bsss_usr_buff_acq:
-                    if (wait_count == 1 and len(self.user_buffer_pv_data[pv_name].signal_data1) != 1) \
-                    or (wait_count == 2 and len(self.user_buffer_pv_data[pv_name].signal_data2) != 1):
-                        all_pvs_data_acquired = False
-                elif (wait_count == 1 and len(self.user_buffer_pv_data[pv_name].signal_data1) < settings.bsa_usr_buff_samples) \
-                or (wait_count == 2 and len(self.user_buffer_pv_data[pv_name].signal_data2) < settings.bsa_usr_buff_samples):
-                    all_pvs_data_acquired = False
-
-            elapsed = time.time()
-            if all_pvs_data_acquired or (elapsed - start) > settings.usr_buff_max_time:
+        start = elapsed = time.time()
+        while (elapsed - start) < settings.usr_buff_max_time:
+            time.sleep(5)
+            if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
+                # print("Arrays has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
+                break
+            elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
+                # print("Arrays has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
                 break
 
-            loop += 1
-            if loop > settings.loop_timeout:
-                print("Loop timed out. Some PV arrays may not be filled.")
-                return
+            elapsed = time.time()
 
+        if (elapsed - start) >= settings.usr_buff_max_time:
+            print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
+    
     def get_pvs_data_single(self, pid_pvlist, samples, idx, usr_buff_fixed_rates):
         self.sample_number = 0
         for pv_name in pid_pvlist:
@@ -217,9 +209,16 @@ class USR_BUFF_TESTER:
             self.sample_number += 1
             self.prep_user_buffer(idx, rate, samples = samples)
             self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
+            start = elapsed = time.time()
+            while (elapsed - start) < settings.usr_buff_max_time:
+                time.sleep(5)
+                if all(len(value.signal_data1[self.sample_number - 1]) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pid_pv_data.values()):
+                    # print("Arrays have been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
+                    break
+                elapsed = time.time()
 
-            time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
-
+            if (elapsed - start) >= settings.usr_buff_max_time:
+                print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
         for pv_name in pid_pvlist:
             camonitor_clear(pv_name)
         
@@ -231,22 +230,39 @@ class USR_BUFF_TESTER:
 
         self.prep_user_buffer(idx, samples = samples)
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-        time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
+        # time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
+
+        start = elapsed = time.time()
+        while (elapsed - start) < settings.usr_buff_max_time:
+            time.sleep(5)
+            if all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_new_sample_data.values()):
+                # print("BSA array has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
+                break
+
+            elapsed = time.time()
+
+        if (elapsed - start) >= settings.usr_buff_max_time:
+            print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
 
         for pv_name in pid_pvlist:
             camonitor_clear(pv_name)
 
     def on_monitor_new_sample_usr_buffer(self, pvname=None, value=None, **kw):
+        # if it is a scalar float value, convert it to a one value list
+        if isinstance(value, float):
+            value = [value]
         self.user_buffer_new_sample_data[pvname].signal_data1 = value
 
     def on_monitor_single_usr_buffer(self, pvname=None, value=None, **kw):
+        if isinstance(value, float):
+            value = [value]
         self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1] = value
 
     def on_monitor_consec_scalar_usr_buff(self, pvname=None, value=None, **kw):
         self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1].append(value)
 
     def on_monitor_pair_usr_buffer(self, pvname=None, value=None, **kw):
-        if settings.bsss_usr_buff_acq:
+        if isinstance(value, float):
             value = [value]
         if self.sample_number == 1:
             self.user_buffer_pv_data[pvname].signal_data1 = value
