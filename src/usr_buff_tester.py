@@ -230,7 +230,6 @@ class USR_BUFF_TESTER:
 
         self.prep_user_buffer(idx, samples = samples)
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-        # time.sleep(settings.bsa_usr_buff_wait_time_per_sample * settings.bsa_usr_buff_samples)
 
         start = elapsed = time.time()
         while (elapsed - start) < settings.usr_buff_max_time:
