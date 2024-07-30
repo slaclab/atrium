@@ -19,14 +19,14 @@ class USR_BUFF_TESTER:
         print("Initializing USR_BUFF_TESTER\n")
 
         settings.bsa_usr_buff = True
+        self.logger = settings.logger
 
         # Key: PV name; value: PV data
         self.user_buffer_pv_data = {}
-        self.user_buffer_pid_pv_data = {} 
-        self.user_buffer_new_sample_data = {}
+        self.user_buffer_pid_pv_data = {}
 
-        self.logger = settings.logger
-        self.sample_number = 1
+        self.rate_num = 0   # the index of rate being acquired in usr_buff_fixed_rates
+        self.sample_num = 1 # number of sample of PV that is being acquired (total of 2 samples per rate)
 
 #### CORE FUNCTIONS
 
@@ -55,14 +55,18 @@ class USR_BUFF_TESTER:
             # Get PVs that will be tested and another list including only PID PV's
             pvlist, pid_pvlist = self.get_pv_lists(idx, signal_pvs, variable_type_suffixes)
 
-            # Acquire data of all pv's that will be used for testing
-            data_acquired = self.get_pvs_data(idx, pvlist, pid_pvlist, samples, usr_buff_fixed_rates)
+            for rate, rate_val  in usr_buff_fixed_rates.items():
 
-            # Run tests for all user buffers
-            self.run_tests(samples, pid_pvlist, usr_buff_fixed_rates)
+                print("\n!!!!!!!-- RATE " + rate + " --!!!!!!!\n")
 
-            # Resets user data and data for pv lists
-            self.reset_data()
+                # Acquire data of all pv's that will be used for testing
+                self.get_pvs_data(idx, pvlist, pid_pvlist, samples, rate)
+
+                # Run tests for all user buffers
+                self.run_tests(samples, rate_val, pid_pvlist)
+
+                # Resets user data and data for pv lists
+                self.reset_data()
 
     def get_pv_lists(self, idx, signal_pvs, variable_type_suffixes):
         pvlist = []
@@ -77,40 +81,52 @@ class USR_BUFF_TESTER:
 
         return pvlist, pid_pvlist
 
-    def get_pvs_data(self, idx, pvlist, pid_pvlist, samples, usr_buff_fixed_rates):
-        self.prep_user_buffer(idx, samples=samples)
-        self.get_pvs_data_pair(pvlist)
+    def get_pvs_data(self, idx, pvlist, pid_pvlist, samples, rate):
+        self.prep_user_buffer(idx, rate, samples=samples)
+        self.get_pvs_data_pair(pvlist, rate)
+
         sample_num = samples
         if settings.bsss_usr_buff_acq:
             sample_num = 2
-        self.get_pvs_data_single(pid_pvlist, sample_num, idx, usr_buff_fixed_rates)
-        self.get_pvs_new_sample(pvlist, samples, idx)
+            self.prep_user_buffer(idx, rate, samples=2)
+            self.get_pvs_data_single(pid_pvlist, rate)
 
-    def run_tests(self, samples, pid_pvlist, usr_buff_fixed_rates):
+    def run_tests(self, samples, rate, pid_pvlist):
         for pv_name, pv_data in self.user_buffer_pv_data.items(): 
             print("\n*****<< " + pv_name + " >>*****\n")
             print("First sample   --> "+str(pv_data.signal_data1))
             print("Second sample  --> "+str(pv_data.signal_data2))
             
-            # Test 1: check for signal change over time
-            self.check_signal_change_over_time(pv_name, pv_data)
+            # Check if both samples are populated with data
+            empty = self.check_pair_for_packed_pv_data(pv_name, pv_data)
+            if empty:
+                print("PV is empty")
+                return
 
-            # Test 2: check if the PID changes as expected (for a PID-type PV only)
-            if pv_name in pid_pvlist:
-                self.check_waveform_PID_update_rate(pv_name, usr_buff_fixed_rates)
+            # Check for NaN values
+            self.check_pv_for_nan_data(pv_name, pv_data)
 
-            # Test 3: check if the acquired number of samples matches what is expected
+            # Check to see if we always get the same value in the latest sample 
+            self.check_pv_for_updated_data(pv_name, pv_data)
+
+            # Check if the bsa buffers changed in time.
+            self.check_pair_for_diff_pv_data(pv_name, pv_data)
+            
+            # Check if the number of elements are correct (only for BSA)
             self.check_number_of_elements_usr_buff(pv_name, samples)
+
+            # Check if the PID changes as expected (for a PID-type PV only)
+            if pv_name in pid_pvlist:
+                self.check_waveform_PID_update_rate(pv_name, rate)
 
     def reset_data(self):
         self.reset_user_buffer()     
         self.user_buffer_pid_pv_data = {}
         self.user_buffer_pv_data = {}
-        self.user_buffer_new_sample_data = {}
 
 #### USER BUFFER MANIPULATION FUNCTIONS
 
-    def prep_user_buffer(self, index, rate=list(settings.bsa_usr_buff_fixed_rates.keys())[0], fixed_rate=True, samples=1):
+    def prep_user_buffer(self, index, rate, fixed_rate=True, samples=1):
         # Assign global user buffer index
         settings.bsa_usr_buff_idx = index
         # Assign global user buffer rate
@@ -156,19 +172,20 @@ class USR_BUFF_TESTER:
         caput(settings.bsa_usr_buff_control_pv, "OFF", wait=True)
 
 #### DATA ACQUISITION FUNCTIONS
-    def get_pvs_data_pair(self, pvlist):
+
+    def get_pvs_data_pair(self, pvlist, rate):
         for pv_name in pvlist:
             self.user_buffer_pv_data[pv_name] = PV_DATA([],[])
             camonitor(pv_name, callback=self.on_monitor_pair_usr_buffer)
 
-        self.sample_number = 1
+        self.sample_num = 1
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-        print("Acquiring first samples for PV's.")
+        print("Acquiring first samples for rate " + rate)
         self.wait(pvlist, acquisition_num = 1)
 
-        self.sample_number = 2
+        self.sample_num = 2
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-        print("Acquiring second samples for PV's.")
+        print("Acquiring second samples for rate " + rate)
         self.wait(pvlist, acquisition_num = 2)
 
         for pv_name in pvlist:
@@ -180,7 +197,7 @@ class USR_BUFF_TESTER:
 
         start = elapsed = time.time()
         while (elapsed - start) < settings.usr_buff_max_time:
-            time.sleep(5)
+            time.sleep(1)
             if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
                 # print("Arrays has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
                 break
@@ -193,107 +210,49 @@ class USR_BUFF_TESTER:
         if (elapsed - start) >= settings.usr_buff_max_time:
             print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
     
-    def get_pvs_data_single(self, pid_pvlist, samples, idx, usr_buff_fixed_rates):
-        self.sample_number = 0
+    def get_pvs_data_single(self, pid_pvlist, rate):
+        print("Acquiring PV arrays for rate " + rate)
         for pv_name in pid_pvlist:
-            self.user_buffer_pid_pv_data[pv_name] = PV_DATA([[] for _ in range(len(usr_buff_fixed_rates))],[])
+            self.user_buffer_pid_pv_data[pv_name] = PV_DATA([],[])
+            camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
 
-            if settings.bsss_usr_buff_acq:
-                camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
-            else:
-                camonitor(pv_name, callback=self.on_monitor_single_usr_buffer)
-
-        print("Acquiring samples for PID PVs for rate:")
-        for rate in usr_buff_fixed_rates.keys():
-            print(rate)
-            self.sample_number += 1
-            self.prep_user_buffer(idx, rate, samples = samples)
-            self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-            start = elapsed = time.time()
-            while (elapsed - start) < settings.usr_buff_max_time:
-                time.sleep(5)
-                if all(len(value.signal_data1[self.sample_number - 1]) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pid_pv_data.values()):
-                    # print("Arrays have been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
-                    break
-                elapsed = time.time()
+        self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
+        start = elapsed = time.time()
+        while (elapsed - start) < settings.usr_buff_max_time:
+            time.sleep(1)
+            if all(len(value.signal_data1) >= 2 for value in self.user_buffer_pid_pv_data.values()):
+                # print("Arrays have been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
+                break
+            elapsed = time.time()
 
             if (elapsed - start) >= settings.usr_buff_max_time:
                 print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
         for pv_name in pid_pvlist:
             camonitor_clear(pv_name)
-        
-    def get_pvs_new_sample(self, pid_pvlist, samples, idx):
-        print("Acquiring new samples for PV's.")
-        for pv_name in pid_pvlist:
-            self.user_buffer_new_sample_data[pv_name] = PV_DATA([],[])
-            camonitor(pv_name, callback=self.on_monitor_new_sample_usr_buffer)
-
-        self.prep_user_buffer(idx, samples = samples)
-        self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-
-        start = elapsed = time.time()
-        while (elapsed - start) < settings.usr_buff_max_time:
-            time.sleep(5)
-            if all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_new_sample_data.values()):
-                # print("BSA array has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
-                break
-
-            elapsed = time.time()
-
-        if (elapsed - start) >= settings.usr_buff_max_time:
-            print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
-
-        for pv_name in pid_pvlist:
-            camonitor_clear(pv_name)
-
-    def on_monitor_new_sample_usr_buffer(self, pvname=None, value=None, **kw):
-        # if it is a scalar float value, convert it to a one value list
-        if isinstance(value, float):
-            value = [value]
-        self.user_buffer_new_sample_data[pvname].signal_data1 = value
-
-    def on_monitor_single_usr_buffer(self, pvname=None, value=None, **kw):
-        if isinstance(value, float):
-            value = [value]
-        self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1] = value
 
     def on_monitor_consec_scalar_usr_buff(self, pvname=None, value=None, **kw):
-        self.user_buffer_pid_pv_data[pvname].signal_data1[self.sample_number - 1].append(value)
+        self.user_buffer_pid_pv_data[pvname].signal_data1.append(value)
 
     def on_monitor_pair_usr_buffer(self, pvname=None, value=None, **kw):
         if isinstance(value, float):
             value = [value]
-        if self.sample_number == 1:
+        if self.sample_num == 1:
             self.user_buffer_pv_data[pvname].signal_data1 = value
         else: #sample number = 2
             self.user_buffer_pv_data[pvname].signal_data2 = value
 
 #### TESTING FUNCTIONS
 
-    def check_signal_change_over_time(self, pv_name, pv_data): 
-        # Check if both samples are populated with data
-        empty = self.check_pair_for_packed_pv_data(pv_name, pv_data)
-        if empty:
-            print("PV is empty")
-            return
-        # Check for NaN values
-        self.check_pv_for_nan_data(pv_name, pv_data)
-        # Check if the bsa buffers changed in time.
-        self.check_pair_for_diff_pv_data(pv_name, pv_data)
-        # Check to see if we always get the same value in the latest sample 
-        if not settings.bsss_usr_buff_acq:
-            self.check_pv_for_updated_data(pv_name, pv_data)
-
-    def check_waveform_PID_update_rate(self, pv_name, usr_buff_fixed_rates):
-        print("\nChecking PID rate:\n")
-        for index, (rate_key, rate_value) in enumerate(usr_buff_fixed_rates.items()):
-            print("Fixed Rate = " + str(rate_key))
-            update_rate = self.compute_PID_update_rate(pv_name, index)
-            self.compare_PID_update_rate(pv_name, rate_value, update_rate)
+    def check_waveform_PID_update_rate(self, pv_name, rate):
+        update_rate = self.compute_PID_update_rate(pv_name)
+        self.compare_PID_update_rate(pv_name, rate, update_rate)
 
     def check_number_of_elements_usr_buff(self, pv_name, samples):
-        signal_data1 = self.user_buffer_new_sample_data[pv_name].signal_data1
-        print("\nNew sample --> " + str(signal_data1) )
+        if settings.bsss_usr_buff_acq: # skip test for BSSS
+            return
+
+        signal_data1 = self.user_buffer_pv_data[pv_name].signal_data1
+        print("\nTested with only 'First sample':")
         # Compare number of elements
         if np.array(signal_data1).size > samples:
             self.logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
@@ -355,13 +314,16 @@ class USR_BUFF_TESTER:
             "Hz) doesn't match the PV update rate of " + str(pv_update_rate) + "Hz")
             self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")
         else:
-            print("PID Update Rate:             OK  (" + str(pid_update_rate) + "Hz)")
+            print("PID Update Rate:             OK (" + str(pid_update_rate) + "Hz)")
 
-    def compute_PID_update_rate(self, pv_name, index):
-        signal_data = self.user_buffer_pid_pv_data[pv_name].signal_data1[index]
+    def compute_PID_update_rate(self, pv_name):
+        if settings.bsss_usr_buff_acq:
+            signal_data = self.user_buffer_pid_pv_data[pv_name].signal_data1
+            print("\nPID sample     --> " + str(signal_data))
+        else:
+            signal_data = self.user_buffer_pv_data[pv_name].signal_data1
         if len(signal_data) == 0:
             return -2
-        print("Sample acquired --> " + str(signal_data))
         PID_data = list(reversed(signal_data))         
         prev_diff = PID_data[0] - PID_data[1]
         for i in range(2, len(PID_data)):
