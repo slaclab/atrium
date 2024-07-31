@@ -193,22 +193,16 @@ class USR_BUFF_TESTER:
         
     def wait(self, pvlist, acquisition_num):
         loop = 0
-        start = time.time()
 
-        start = elapsed = time.time()
-        while (elapsed - start) < settings.usr_buff_max_time:
-            time.sleep(1)
-            if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
-                # print("Arrays has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
-                break
-            elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
-                # print("Arrays has been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
-                break
-
-            elapsed = time.time()
-
-        if (elapsed - start) >= settings.usr_buff_max_time:
-            print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
+        if settings.usr_buff_acq_mode == "num_samples":
+            while True:
+                time.sleep(1)
+                if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
+                    break
+                elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
+                    break
+        else:
+            time.sleep(settings.usr_buff_max_time)
     
     def get_pvs_data_single(self, pid_pvlist, rate):
         print("Acquiring PV arrays for rate " + rate)
@@ -217,16 +211,9 @@ class USR_BUFF_TESTER:
             camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
 
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-        start = elapsed = time.time()
-        while (elapsed - start) < settings.usr_buff_max_time:
-            time.sleep(1)
-            if all(len(value.signal_data1) >= 2 for value in self.user_buffer_pid_pv_data.values()):
-                # print("Arrays have been filled completely to " + str(settings.bsa_usr_buff_samples) + " samples.")
-                break
-            elapsed = time.time()
 
-            if (elapsed - start) >= settings.usr_buff_max_time:
-                print("Reached a max wait time of", settings.usr_buff_max_time , "seconds. Arrays may not have been completely filled")
+        time.sleep(settings.bsa_usr_buff_samples)
+        
         for pv_name in pid_pvlist:
             camonitor_clear(pv_name)
 

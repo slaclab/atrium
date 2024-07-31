@@ -44,8 +44,8 @@ class ARG_PARSER:
         parser.add_argument('--tpg', dest='tpg', default='sioc-b084-ts05', help='TPG base PV name to test')
         parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='number of elements per BSA acquisition (default 2)')
         parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='system buffers to test (default: unspecified for all)')
-        parser.add_argument('--usr_buff_samples', dest='usr_buff_samples', default=2, help='user buffer samples to acquire (default for waveform: 2)')
-        parser.add_argument('--usr_buff_max_time', dest='usr_buff_max_time', default=10, help='max time for user buffer acquisition (seconds)')
+        parser.add_argument('--usr_buff_samples', dest='usr_buff_samples', help='user buffer samples to acquire (default for waveform: 2)')
+        parser.add_argument('--usr_buff_max_time', dest='usr_buff_max_time', help='max time for user buffer acquisition (seconds)')
         parser.add_argument('--test_type', dest='test_type', default="both", help='sys: test system buffers, usr: test user buffers, both: test both')
 
         # Parse out arguments
@@ -67,14 +67,6 @@ class ARG_PARSER:
         if args.usr_buff_list:
             settings.bsa_usr_buff_idx_range = args.usr_buff_list
             settings.bsss_usr_buff_idx_range = settings.bsa_usr_buff_idx_range
-        
-        # Set the user buffer samples for the number of elements test
-        if args.usr_buff_samples:
-            settings.bsa_usr_buff_samples_num_elem_test = int(args.usr_buff_samples)
-
-        # Set max time for user buffer to get samples (seconds)
-        if args.usr_buff_max_time:
-            settings.usr_buff_max_time = int(args.usr_buff_max_time)
 
         # Set the system buffers
         if args.sys_buff_list:
@@ -83,7 +75,21 @@ class ARG_PARSER:
         # Set type of buffers to test
         if args.test_type:
             settings.test_type = args.test_type
-
+        
+        # Enforce use of either --usr_buff_samples or --usr_buff_max_time
+        if args.usr_buff_samples and args.usr_buff_max_time:
+            print("ERROR: --usr_buff_samples and --usr_buff_max_time cannot be used at the same time.")
+            exit()
+        elif args.usr_buff_samples:
+            settings.bsa_usr_buff_samples_num_elem_test = int(args.usr_buff_samples)
+            settings.usr_buff_acq_mode = "num_samples"
+        elif args.usr_buff_max_time:
+            settings.usr_buff_max_time = int(args.usr_buff_max_time)
+            settings.bsa_usr_buff_samples_num_elem_test = 20000
+            settings.usr_buff_acq_mode = "max_time"
+        else: # default to num of samples (2 eleme)
+            settings.bsa_usr_buff_samples_num_elem_test = 2
+            settings.usr_buff_acq_mode = "num_samples"
 
 #************ CMD_SEEKER Class ************#
 class CMD_SEEKER:

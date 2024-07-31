@@ -45,7 +45,10 @@ bsa_usr_buff_samples = 1                # initialize to a non-zero value
 bsa_usr_buff_samples_num_elem_test = 2  # at least two are needed for a waveform PV
 
 # BSA user buffer max time to wait acquiring samples (seconds)
-bsa_buff_max_time = 30
+usr_buff_max_time = 30
+
+# Acquire samples by number of samples ('num_samples') or maximum time ('max_time')
+usr_buff_acq_mode = "num_samples"
 
 # Wait time for a BSA user buffer to acquire one sample
 bsa_usr_buff_wait_time_per_sample = 1
