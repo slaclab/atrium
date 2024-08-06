@@ -41,7 +41,7 @@ class ARG_PARSER:
         parser = argparse.ArgumentParser(description='Process test configuration.')
         parser.add_argument('--cpu', dest='cpu', default='', help='CPU hosting the IOC to test')
         parser.add_argument('--ioc', dest='ioc', default='sioc-b084-sp17', help='IOC to test (default: sioc-b084-ts05)')
-        parser.add_argument('--tpg', dest='tpg', default='sioc-b084-ts05', help='TPG base PV name to test')
+        parser.add_argument('--tpg', dest='tpg', default='TPG:SYS0:1', help='TPG base PV name to test')
         parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='number of elements per BSA acquisition (default 2)')
         parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='system buffers to test (default: unspecified for all)')
         parser.add_argument('--usr_buff_samples', dest='usr_buff_samples', help='user buffer samples to acquire (default for waveform: 2)')
@@ -87,7 +87,7 @@ class ARG_PARSER:
             settings.usr_buff_max_time = int(args.usr_buff_max_time)
             settings.bsa_usr_buff_samples_num_elem_test = 20000
             settings.usr_buff_acq_mode = "max_time"
-        else: # default to num of samples (2 eleme)
+        else: # default to num of samples (2 elements)
             settings.bsa_usr_buff_samples_num_elem_test = 2
             settings.usr_buff_acq_mode = "num_samples"
 

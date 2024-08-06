@@ -27,6 +27,8 @@ class USR_BUFF_TESTER:
 
         self.rate_num = 0   # the index of rate being acquired in usr_buff_fixed_rates
         self.sample_num = 1 # number of sample of PV that is being acquired (total of 2 samples per rate)
+        
+        self.sample_size = 0
 
 #### CORE FUNCTIONS
 
@@ -112,9 +114,12 @@ class USR_BUFF_TESTER:
             # Check if the bsa buffers changed in time.
             self.check_pair_for_diff_pv_data(pv_name, pv_data)
             
+            if not settings.bsss_usr_buff_acq: 
+                print("\nTested with only 'First sample':")
+
             # Check if the number of elements are correct (only for BSA)
             self.check_number_of_elements_usr_buff(pv_name, samples)
-
+            
             # Check if the PID changes as expected (for a PID-type PV only)
             if pv_name in pid_pvlist:
                 self.check_waveform_PID_update_rate(pv_name, rate)
@@ -137,13 +142,14 @@ class USR_BUFF_TESTER:
         settings.bsa_usr_buff_samples = samples
         # Assign global user buffer control and settings PVs
         # Get PVs to control and settings
-        bsa_buff_prefix = settings.tpg.replace('TPG', 'BSA', 1)   
+        bsa_buff_prefix = settings.tpg.replace('TPG', 'BSA', 1)
 
         control_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':CTRL'
         meascnt_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':MEASCNT'
         rate_mode_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':RATEMODE'           
         ac_rate_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':ACRATE'           
         fixed_rate_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':FIXEDRATE'
+
         # Assign control and others settings to global PVs too
         settings.bsa_usr_buff_rate_mode_pv = rate_mode_pv
         settings.bsa_usr_buff_ac_rate_pv = ac_rate_pv
@@ -178,6 +184,10 @@ class USR_BUFF_TESTER:
             self.user_buffer_pv_data[pv_name] = PV_DATA([],[])
             camonitor(pv_name, callback=self.on_monitor_pair_usr_buffer)
 
+        # bsa_buff_prefix = settings.tpg.replace('TPG', 'BSA', 1)
+        # cnt_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':CNT'
+        # camonitor(cnt_pv, callback=self.on_monitor_cnt_pv)
+
         self.sample_num = 1
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
         print("Acquiring first samples for rate " + rate)
@@ -188,6 +198,7 @@ class USR_BUFF_TESTER:
         print("Acquiring second samples for rate " + rate)
         self.wait(pvlist, acquisition_num = 2)
 
+        # camonitor_clear(cnt_pv)
         for pv_name in pvlist:
             camonitor_clear(pv_name)
         
@@ -202,7 +213,7 @@ class USR_BUFF_TESTER:
                 elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
                     break
         else:
-            time.sleep(settings.usr_buff_max_time)
+            time.sleep(settings.usr_buff_max_time)          
     
     def get_pvs_data_single(self, pid_pvlist, rate):
         print("Acquiring PV arrays for rate " + rate)
@@ -227,6 +238,9 @@ class USR_BUFF_TESTER:
             self.user_buffer_pv_data[pvname].signal_data1 = value
         else: #sample number = 2
             self.user_buffer_pv_data[pvname].signal_data2 = value
+    
+    def on_monitor_cnt_pv(self, pvname=None, value=None, **kw):
+        self.sample_size = value
 
 #### TESTING FUNCTIONS
 
@@ -235,11 +249,14 @@ class USR_BUFF_TESTER:
         self.compare_PID_update_rate(pv_name, rate, update_rate)
 
     def check_number_of_elements_usr_buff(self, pv_name, samples):
-        if settings.bsss_usr_buff_acq: # skip test for BSSS
+        if settings.bsss_usr_buff_acq: # skip test for BSSS for now
             return
 
         signal_data1 = self.user_buffer_pv_data[pv_name].signal_data1
-        print("\nTested with only 'First sample':")
+
+        # if settings.usr_buff_acq_mode == "max_time":
+        #     samples = self.sample_size
+
         # Compare number of elements
         if np.array(signal_data1).size > samples:
             self.logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
