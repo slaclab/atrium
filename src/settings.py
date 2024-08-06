@@ -41,17 +41,22 @@ bsa_usr_buff_idx = 21
 bsa_usr_buff_rate = "1Hz" 
 
 # BSA user buffer samples to acquire
-bsa_usr_buff_samples = 1                # initialize to a non-zero value
-bsa_usr_buff_samples_num_elem_test = 2  # at least two are needed for a waveform PV
+bsa_usr_buff_elements = 1                # initialize to a non-zero value
+
+# BSSS number of samples to acquire
+bsss_num_samples = 1
 
 # BSA user buffer max time to wait acquiring samples (seconds)
-usr_buff_max_time = 30
+bsa_usr_buff_max_time = 30
 
-# Acquire samples by number of samples ('num_samples') or maximum time ('max_time')
-usr_buff_acq_mode = "num_samples"
+# BSSS max time to wait when acquiring samples (seconds)
+bsss_max_time = 30
 
-# Wait time for a BSA user buffer to acquire one sample
-bsa_usr_buff_wait_time_per_sample = 1
+# Acquire samples by number of samples ('elements') or maximum time ('time')
+usr_buff_acq_mode = "elements"
+
+# Acquire samples by number of samples ('elements') or maximum time ('time')
+bsss_acq_mode = "elements"
 
 # BSA user buffer control and settings PVs
 bsa_usr_buff_rate_mode_pv  = ""

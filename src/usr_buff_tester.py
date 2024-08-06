@@ -38,7 +38,7 @@ class USR_BUFF_TESTER:
         list_of_signal_pvs = settings.service_pv_prefixes["BSSS"]
 
         self.core_test_user_buffers(list_of_signal_pvs, settings.bsss_scalar_type_suffixes, settings.bsss_usr_buff_idx_range, 
-        settings.bsss_usr_buff_fixed_rates, samples = 1)
+        settings.bsss_usr_buff_fixed_rates, samples = settings.bsss_num_samples)
 
     def test_bsa_user_buffers(self):
         print("Checking BSA user buffers.")
@@ -46,7 +46,7 @@ class USR_BUFF_TESTER:
         list_of_signal_pvs = settings.service_pv_prefixes["BSA"]
 
         self.core_test_user_buffers(list_of_signal_pvs, settings.bsa_hst_type_suffixes,
-        settings.bsa_usr_buff_idx_range, settings.bsa_usr_buff_fixed_rates, samples=settings.bsa_usr_buff_samples_num_elem_test)
+        settings.bsa_usr_buff_idx_range, settings.bsa_usr_buff_fixed_rates, samples=settings.bsa_usr_buff_elements)
 
     def core_test_user_buffers(self, signal_pvs, variable_type_suffixes, usr_buff_idx_range, usr_buff_fixed_rates, samples):
         for idx in usr_buff_idx_range:
@@ -70,6 +70,11 @@ class USR_BUFF_TESTER:
                 # Resets user data and data for pv lists
                 self.reset_data()
 
+    def get_pvs_data(self, idx, pvlist, pid_pvlist, samples, rate):
+        self.prep_user_buffer(idx, rate, samples=samples)
+        self.get_pvs_data_pair(pvlist, rate)
+        self.get_pvs_data_single(pid_pvlist, rate)
+
     def get_pv_lists(self, idx, signal_pvs, variable_type_suffixes):
         pvlist = []
         pid_pvlist = []
@@ -83,21 +88,11 @@ class USR_BUFF_TESTER:
 
         return pvlist, pid_pvlist
 
-    def get_pvs_data(self, idx, pvlist, pid_pvlist, samples, rate):
-        self.prep_user_buffer(idx, rate, samples=samples)
-        self.get_pvs_data_pair(pvlist, rate)
-
-        sample_num = samples
-        if settings.bsss_usr_buff_acq:
-            sample_num = 2
-            self.prep_user_buffer(idx, rate, samples=2)
-            self.get_pvs_data_single(pid_pvlist, rate)
-
     def run_tests(self, samples, rate, pid_pvlist):
         for pv_name, pv_data in self.user_buffer_pv_data.items(): 
             print("\n*****<< " + pv_name + " >>*****\n")
-            print("First sample   --> "+str(pv_data.signal_data1))
-            print("Second sample  --> "+str(pv_data.signal_data2))
+            print("First sample   --> " + self.format_array(pv_data.signal_data1, threshold = 15))
+            print("Second sample  --> " + self.format_array(pv_data.signal_data2, threshold = 15))
             
             # Check if both samples are populated with data
             empty = self.check_pair_for_packed_pv_data(pv_name, pv_data)
@@ -114,8 +109,7 @@ class USR_BUFF_TESTER:
             # Check if the bsa buffers changed in time.
             self.check_pair_for_diff_pv_data(pv_name, pv_data)
             
-            if not settings.bsss_usr_buff_acq: 
-                print("\nTested with only 'First sample':")
+            print("\nTested with only 'First sample':")
 
             # Check if the number of elements are correct (only for BSA)
             self.check_number_of_elements_usr_buff(pv_name, samples)
@@ -129,6 +123,18 @@ class USR_BUFF_TESTER:
         self.user_buffer_pid_pv_data = {}
         self.user_buffer_pv_data = {}
 
+    def format_array(self, array, threshold):
+        # returns string of array to print
+
+        leading_elements = preceding_elements = 3
+        if len(array) > threshold:
+            head_str = ' '.join(map(str, array[:leading_elements]))
+            tail_str = ' '.join(map(str, array[-preceding_elements:]))
+            return "[" + head_str + " ... " + tail_str + "] (" + str(len(array)) + ")"
+        else:
+            return "[" + ' '.join(map(str, array)) + "] (" + str(len(array)) + ")"
+            
+
 #### USER BUFFER MANIPULATION FUNCTIONS
 
     def prep_user_buffer(self, index, rate, fixed_rate=True, samples=1):
@@ -138,8 +144,7 @@ class USR_BUFF_TESTER:
         settings.bsa_usr_buff_rate = rate
         # Assign global user buffer fixed rate flag
         settings.bsa_usr_buff_fixed_rate = fixed_rate
-        # Assign global user buffer samples to acquire
-        settings.bsa_usr_buff_samples = samples
+
         # Assign global user buffer control and settings PVs
         # Get PVs to control and settings
         bsa_buff_prefix = settings.tpg.replace('TPG', 'BSA', 1)
@@ -182,7 +187,10 @@ class USR_BUFF_TESTER:
     def get_pvs_data_pair(self, pvlist, rate):
         for pv_name in pvlist:
             self.user_buffer_pv_data[pv_name] = PV_DATA([],[])
-            camonitor(pv_name, callback=self.on_monitor_pair_usr_buffer)
+            if settings.bsss_usr_buff_acq:
+                camonitor(pv_name, callback=self.on_monitor_pair_bsss_buffer)
+            else:
+                camonitor(pv_name, callback=self.on_monitor_pair_usr_buffer)
 
         # bsa_buff_prefix = settings.tpg.replace('TPG', 'BSA', 1)
         # cnt_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':CNT'
@@ -203,18 +211,48 @@ class USR_BUFF_TESTER:
             camonitor_clear(pv_name)
         
     def wait(self, pvlist, acquisition_num):
+        if settings.bsss_usr_buff_acq:
+            self.wait_bsss(pvlist, acquisition_num)
+        else:
+            self.wait_bsa(pvlist, acquisition_num)
+
+    def wait_bsa(self, pvlist, acquisition_num):
         loop = 0
 
-        if settings.usr_buff_acq_mode == "num_samples":
+        if settings.usr_buff_acq_mode == "elements":
             while True:
                 time.sleep(1)
-                if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
+                if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_elements for value in self.user_buffer_pv_data.values()):
                     break
-                elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_samples for value in self.user_buffer_pv_data.values()):
+                elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_elements for value in self.user_buffer_pv_data.values()):
                     break
         else:
-            time.sleep(settings.usr_buff_max_time)          
+            time.sleep(settings.bsa_usr_buff_max_time)
+
+    def wait_bsss(self, pvlist, acquisition_num):
+        loop = 0
+
+        if settings.bsss_acq_mode == "elements":
+            while True:
+                time.sleep(1)
+                if acquisition_num == 1 and all(len(value.signal_data1) >= settings.bsss_num_samples for value in self.user_buffer_pv_data.values()):
+                    break
+                elif acquisition_num == 2 and all(len(value.signal_data2) >= settings.bsss_num_samples for value in self.user_buffer_pv_data.values()):
+                    break
+        else:
+            time.sleep(settings.bsss_max_time)
     
+    def wait_pid_bsss(self, pid_pvlist):
+        loop = 0
+
+        if settings.bsss_acq_mode == "elements":
+            while True:
+                time.sleep(1)
+                if all(len(value.signal_data1) >= settings.bsss_num_samples for value in self.user_buffer_pid_pv_data.values()):
+                    break
+        else:
+            time.sleep(settings.bsss_max_time)
+
     def get_pvs_data_single(self, pid_pvlist, rate):
         print("Acquiring PV arrays for rate " + rate)
         for pv_name in pid_pvlist:
@@ -223,7 +261,7 @@ class USR_BUFF_TESTER:
 
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
 
-        time.sleep(settings.bsa_usr_buff_samples)
+        self.wait_pid_bsss(pid_pvlist)
         
         for pv_name in pid_pvlist:
             camonitor_clear(pv_name)
@@ -232,7 +270,7 @@ class USR_BUFF_TESTER:
         self.user_buffer_pid_pv_data[pvname].signal_data1.append(value)
 
     def on_monitor_pair_usr_buffer(self, pvname=None, value=None, **kw):
-        if isinstance(value, float):
+        if isinstance(value, float) and not settings.bsss_usr_buff_acq:
             value = [value]
         if self.sample_num == 1:
             self.user_buffer_pv_data[pvname].signal_data1 = value
@@ -242,6 +280,14 @@ class USR_BUFF_TESTER:
     def on_monitor_cnt_pv(self, pvname=None, value=None, **kw):
         self.sample_size = value
 
+    def on_monitor_pair_bsss_buffer(self, pvname=None, value=None, **kw):
+        if isinstance(value, float) and not settings.bsss_usr_buff_acq:
+            value = [value]
+        if self.sample_num == 1:
+            self.user_buffer_pv_data[pvname].signal_data1.append(value)
+        else: #sample number = 2
+            self.user_buffer_pv_data[pvname].signal_data2.append(value)
+
 #### TESTING FUNCTIONS
 
     def check_waveform_PID_update_rate(self, pv_name, rate):
@@ -249,14 +295,11 @@ class USR_BUFF_TESTER:
         self.compare_PID_update_rate(pv_name, rate, update_rate)
 
     def check_number_of_elements_usr_buff(self, pv_name, samples):
-        if settings.bsss_usr_buff_acq: # skip test for BSSS for now
-            return
 
         signal_data1 = self.user_buffer_pv_data[pv_name].signal_data1
 
         # if settings.usr_buff_acq_mode == "max_time":
         #     samples = self.sample_size
-
         # Compare number of elements
         if np.array(signal_data1).size > samples:
             self.logger.error("[ERROR]    - " + pv_name + " contains more than the expected number of elements.")
@@ -323,7 +366,7 @@ class USR_BUFF_TESTER:
     def compute_PID_update_rate(self, pv_name):
         if settings.bsss_usr_buff_acq:
             signal_data = self.user_buffer_pid_pv_data[pv_name].signal_data1
-            print("\nPID sample     --> " + str(signal_data))
+            print("\nPID sample     --> " + self.format_array(signal_data, threshold = 15))
         else:
             signal_data = self.user_buffer_pv_data[pv_name].signal_data1
         if len(signal_data) == 0:
