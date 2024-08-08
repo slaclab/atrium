@@ -80,9 +80,6 @@ bsa_usr_buff_fixed_rates  = {"1Hz":1,"10Hz":10,"100Hz":100,"1kHz":1.0e+03,"10kHz
 # BSA user buffer AC rate options
 bsa_usr_buff_ac_rates = {"0.5Hz":0.5,"1Hz":1,"5Hz":5,"10Hz":10,"30Hz":30,"60Hz":60}
 
-# Wait time to acquire from a system buffer
-sys_buff_wait_time = 1 
-
 # BSSS user buffer index range
 bsss_usr_buff_idx_range = bsa_usr_buff_idx_range
 
@@ -115,9 +112,6 @@ sys_buff_list = []
 
 # Environment path variables from st.cmd and envPaths
 cmd_env_paths = {}
-
-# Number of loops to wait for data acquisition before timing out
-loop_timeout = 3
 
 # Test user buffer/sys buffer or both
 test_type = ""
