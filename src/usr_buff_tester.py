@@ -322,8 +322,7 @@ class USR_BUFF_TESTER:
 
     def check_pv_for_updated_data(self, pv_name, pv_data):
         # Check to see if we always get the same value in the latest sample 
-        if (isinstance(pv_data.signal_data2, (list, tuple, np.ndarray)) and (np.array(pv_data.signal_data2) == np.array(pv_data.signal_data2)[-1]).all()) or \
-           (not isinstance(pv_data.signal_data2, (list, tuple, np.ndarray)) and (np.array(pv_data.signal_data2) == np.array([pv_data.signal_data2])[-1]).all()):
+        if (np.array(pv_data.signal_data2) == np.array(pv_data.signal_data2)[-1]).all():
             self.logger.warning("[WARNING]  - " + pv_name + " keeps the same value over time.")
             self.logger.warning("             Is IOC triggering the firmware correctly?")
         else:
@@ -339,11 +338,8 @@ class USR_BUFF_TESTER:
 
     def check_pair_for_packed_pv_data(self, pv_name, pv_data):
         # Check if both samples are populated with data
-        if (                                                                                                     \
-             (isinstance(pv_data.signal_data1, (list, tuple, np.ndarray)) and (len(pv_data.signal_data1) == 0))               or \
-             (isinstance(pv_data.signal_data2, (list, tuple, np.ndarray)) and (len(pv_data.signal_data2) == 0))               or \
-             (not isinstance(pv_data.signal_data1, (list, tuple, np.ndarray)) and (np.array(pv_data.signal_data1).size == 0)) or \
-             (not isinstance(pv_data.signal_data2, (list, tuple, np.ndarray)) and (np.array(pv_data.signal_data2).size == 0))):
+        if len(pv_data.signal_data1) == 0 or len(pv_data.signal_data2) == 0:
+
             self.logger.error("[ERROR] -    " + pv_name + " didn't bring any data (empty).")
             self.logger.error("             Is BSA working?")
             return True

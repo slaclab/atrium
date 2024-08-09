@@ -21,11 +21,6 @@ class SYS_BUFF_TESTER:
     
     def __init__(self):
         print("Initializing BSA_TESTER\n")
-
-        # Key: pv name; value: pv data object
-        self.user_buffer_pv_data = {}
-        self.user_buffer_pid_pv_data = {}
-        self.sample_number = 1
         
         self.logger = settings.logger
 
