@@ -404,7 +404,7 @@ if __name__ == "__main__":
     if settings.test_type == "usr" or settings.test_type == "both":
         user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
 
-        # user_buffer_tester.test_bsa_user_buffers()
+        user_buffer_tester.test_bsa_user_buffers()
         user_buffer_tester.test_bsss_user_buffers()
     
 #   tester.test_bsa_fault_buffers   ()
