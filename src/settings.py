@@ -52,6 +52,9 @@ bsa_usr_buff_max_time = 30
 # BSSS max time to wait when acquiring samples (seconds)
 bsss_max_time = 30
 
+# Wait time to acquire from a system buffer
+sys_buff_wait_time = 1 
+
 # Acquire samples by number of samples ('elements') or maximum time ('time')
 usr_buff_acq_mode = "elements"
 
@@ -116,6 +119,8 @@ cmd_env_paths = {}
 # Test user buffer/sys buffer or both
 test_type = ""
 
+# Number of loops to wait for data acquisition before timing out
+loop_timeout = 3
 
 ##  TPG Table Below
 ##  -------     ------------------------
@@ -135,4 +140,3 @@ console_handler.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 logger.setLevel(logging.DEBUG)
-
