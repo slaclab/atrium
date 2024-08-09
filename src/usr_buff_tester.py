@@ -4,6 +4,7 @@ import settings
 
 from dataclasses import dataclass
 from typing import List
+from datetime import datetime
 from epics import caget, caput, camonitor, camonitor_clear, PV
 
 @dataclass
@@ -25,9 +26,11 @@ class USR_BUFF_TESTER:
         self.user_buffer_pv_data = {}
         self.user_buffer_pid_pv_data = {}
 
-        self.sample_num = 1 # number of sample of PV that is being acquired (total of 2 samples per rate)
-        
+        # number of sample of PV that is being acquired (total of 2 samples per rate)
+        self.sample_num = 1
         self.sample_size = 0
+        self.bsss_acq_timestamp = float("inf")
+
 
 #### CORE FUNCTIONS
 
@@ -94,7 +97,7 @@ class USR_BUFF_TESTER:
             print("\n*****<< " + pv_name + " >>*****\n")
             print("First sample   --> " + self.format_array(pv_data.signal_data1, threshold = 15))
             print("Second sample  --> " + self.format_array(pv_data.signal_data2, threshold = 15))
-            
+
             # Check if both samples are populated with data
             empty = self.check_pair_for_packed_pv_data(pv_name, pv_data)
             if empty:
@@ -109,11 +112,11 @@ class USR_BUFF_TESTER:
 
             # Check if the bsa buffers changed in time.
             self.check_pair_for_diff_pv_data(pv_name, pv_data)
-            
+
             # Check if the number of elements are correct (only for BSA)
             if settings.usr_buff_acq_mode == "elements" or settings.bsss_acq_mode == "elements":
                 self.check_number_of_elements_usr_buff(pv_name, samples)
-            
+
             # Check if the PID changes as expected (for a PID-type PV only)
             if pv_name in pid_pvlist:
                 self.check_waveform_PID_update_rate(pv_name, rate)
@@ -133,7 +136,7 @@ class USR_BUFF_TESTER:
             return "[" + head_str + " ... " + tail_str + "] (" + str(len(array)) + ")"
         else:
             return "[" + ' '.join(map(str, array)) + "] (" + str(len(array)) + ")"
-            
+
 #### USER BUFFER MANIPULATION FUNCTIONS
 
     def prep_user_buffer(self, index, rate, fixed_rate=True, samples=1):
@@ -184,14 +187,16 @@ class USR_BUFF_TESTER:
 #### DATA ACQUISITION FUNCTIONS
 
     def get_pvs_data_pair(self, pvlist, rate):
+
         for pv_name in pvlist:
             self.user_buffer_pv_data[pv_name] = PV_DATA([],[])
             if settings.bsss_usr_buff_acq:
                 camonitor(pv_name, callback=self.on_monitor_pair_bsss_buffer)
             else:
                 camonitor(pv_name, callback=self.on_monitor_pair_usr_buffer)
-
+        
         self.sample_num = 1
+        self.get_timestamp()
         print("Acquiring first samples for rate " + rate)
         self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
         self.wait(pvlist)
@@ -204,6 +209,17 @@ class USR_BUFF_TESTER:
         for pv_name in pvlist:
             camonitor_clear(pv_name)
         
+    def get_timestamp(self):
+        date_timestamp = caget(settings.tpg + ":TS")
+
+        # EX: Convert from '2024/08/08 17:11:53.449763740' to '1723162313.044976'
+        ts = caget("TPG:B084:2:TS")
+        ts = ts[:-3] # Reduce decimal to 6 decimal spaces
+        ts = ts.replace("/", "-") # Replace '/' with '-'
+        num_ts = datetime.fromisoformat(ts).timestamp() # Convert to iso format
+
+        self.bsss_acq_timestamp = num_ts
+
     def wait(self, pvlist):
         if settings.bsss_usr_buff_acq:
             self.wait_bsss(pvlist)
@@ -274,13 +290,14 @@ class USR_BUFF_TESTER:
     def on_monitor_cnt_pv(self, pvname=None, value=None, **kw):
         self.sample_size = value
 
-    def on_monitor_pair_bsss_buffer(self, pvname=None, value=None, **kw):
-        if isinstance(value, float) and not settings.bsss_usr_buff_acq:
-            value = [value]
-        if self.sample_num == 1:
-            self.user_buffer_pv_data[pvname].signal_data1.append(value)
-        else: #sample number = 2
-            self.user_buffer_pv_data[pvname].signal_data2.append(value)
+    def on_monitor_pair_bsss_buffer(self, pvname=None, value=None, timestamp=None, **kw):
+        if timestamp > self.bsss_acq_timestamp:
+            if isinstance(value, float) and not settings.bsss_usr_buff_acq:
+                value = [value]
+            if self.sample_num == 1:
+                self.user_buffer_pv_data[pvname].signal_data1.append(value)
+            else: #sample number = 2
+                self.user_buffer_pv_data[pvname].signal_data2.append(value)
 
 #### TESTING FUNCTIONS
 
