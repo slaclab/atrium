@@ -22,7 +22,7 @@ class USR_BUFF_TESTER:
         settings.bsa_usr_buff = True
         self.logger = settings.logger
 
-        # Key: PV name; value: PV data
+        # Key: PV name; value: PV data object
         self.user_buffer_pv_data = {}
         self.user_buffer_pid_pv_data = {}
 
@@ -30,7 +30,6 @@ class USR_BUFF_TESTER:
         self.sample_num = 1
         self.sample_size = 0
         self.bsss_acq_timestamp = float("inf")
-
 
 #### CORE FUNCTIONS
 
