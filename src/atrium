@@ -7,6 +7,7 @@ import subprocess
 import settings
 import usr_buff_tester
 import sys_buff_tester
+import bld_tester
 
 ############################################
 #            README - HOW TO RUN           #
@@ -40,15 +41,17 @@ class ARG_PARSER:
         print("Initializing ARG_PARSER\n")
         parser = argparse.ArgumentParser(description='Process test configuration.')
         parser.add_argument('--cpu', dest='cpu', default='', help='CPU hosting the IOC to test')
-        parser.add_argument('--ioc', dest='ioc', default='sioc-b084-sp17', help='IOC to test (default: sioc-b084-ts05)')
-        parser.add_argument('--tpg', dest='tpg', default='TPG:SYS0:1', help='TPG base PV name to test')
-        parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='number of elements per BSA acquisition (default 2)')
-        parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='system buffers to test (default: unspecified for all)')
-        parser.add_argument('--bsa_usr_buff_elements', dest='bsa_usr_buff_elements', help='user buffer samples to acquire (default for waveform: 2)')
+        parser.add_argument('--ioc', dest='ioc', default='', help='IOC to test')
+        parser.add_argument('--tpg', dest='tpg', default='TPG:SYS0:1', help='TPG base PV name (default: TPG:SYS0:1)')
+        parser.add_argument('--usr_buffs', dest='usr_buff_list', nargs='+', default='', help='list of user buffers to test (default to all buffers)')
+        parser.add_argument('--sys_buffs', dest='sys_buff_list', nargs='+', default='', help='list of system buffers to test (default to all buffers)')
+        parser.add_argument('--bsa_usr_buff_elements', dest='bsa_usr_buff_elements', help='number of user buffer elem. to acquire (default for waveform: 2)')
         parser.add_argument('--bsa_usr_buff_max_time', dest='bsa_usr_buff_max_time', help='max time for user buffer acquisition (seconds)')
-        parser.add_argument('--bsss_num_samples', dest='bsss_num_samples', help='number of samples to acquire for bsss (default for waveform: 2)')
-        parser.add_argument('--bsss_max_time', dest='bsss_max_time', help='max time for bsss (seconds)')
-        parser.add_argument('--test_type', dest='test_type', default="both", help='sys: test system buffers, usr: test user buffers, both: test both')
+        parser.add_argument('--bsss_num_samples', dest='bsss_num_samples', help='number of BSSS samples to acquire (default: 2)')
+        parser.add_argument('--bsss_max_time', dest='bsss_max_time', help='max time for BSSS to acquire (seconds)')
+        parser.add_argument('--test_type', dest='test_type', default="all", help='sys: test only system buffers, usr: test only user buffers, bld: test only bld freqs, all: test all')
+        parser.add_argument('--bld_decode_path', dest='bld_decode_path', default="$PACKAGE_SITE_TOP/bldDecode/current", help='path to file location of bldDecode')
+        parser.add_argument('--bld_configs', dest='bld_configs', nargs='+', default='', help='list of bld frequencies to test (default to all frequencies)')
 
         # Parse out arguments
         args = parser.parse_args()
@@ -107,6 +110,12 @@ class ARG_PARSER:
         else: # default to num of samples (2 elements)
             settings.bsss_num_samples = 2
             settings.bsss_acq_mode = "elements"
+
+        if args.bld_decode_path:
+            settings.bld_decode_path = args.bld_decode_path
+
+        if args.bld_configs:
+            settings.bld_config_list = args.bld_configs
 
 #************ CMD_SEEKER Class ************#
 class CMD_SEEKER:
@@ -374,7 +383,7 @@ class CMD_PARSER:
                 line = self.apply_substitutions(line)
                 self.extract_service_pv_prefix(line, "BLD")
         #print(caget(service_pv_prefixes["BSA"][0] + "PIDSCD1H"))
-        #print(service_pv_prefixes)
+        
         print("st.cmd reading complete.\n")
 
 ############################################
@@ -393,19 +402,22 @@ if __name__ == "__main__":
     parser = CMD_PARSER()
     parser.parse_cmd(cmd)
      
-    # Create a tester object for BSA system buffers
-    if settings.test_type == "sys" or settings.test_type == "both":
-        system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
-
-        system_buffer_tester.test_bsa_system_buffers  ()
-        system_buffer_tester.test_bsss_system_buffers ()
+    match settings.test_type:
+        case "sys" | "all":
+            # Create a tester object for BSA system buffers
+            system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
+            system_buffer_tester.test_bsa_system_buffers  ()
+            system_buffer_tester.test_bsss_system_buffers ()
     
-    # Create a tester object for BSA user buffers
-    if settings.test_type == "usr" or settings.test_type == "both":
-        user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
+        case "usr" | "all":    
+            # Create a tester object for BSA user buffers
+            user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
+            user_buffer_tester.test_bsa_user_buffers()
+            user_buffer_tester.test_bsss_user_buffers()
 
-        user_buffer_tester.test_bsa_user_buffers()
-        user_buffer_tester.test_bsss_user_buffers()
+        case "bld" | "all":
+            bld_tester = bld_tester.BLD_TESTER()
+            bld_tester.test_bld_configurations()
     
 #   tester.test_bsa_fault_buffers   ()
 #   tester.test_bsss_fault_buffers() 

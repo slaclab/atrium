@@ -75,8 +75,6 @@ class USR_BUFF_TESTER:
     def get_pvs_data(self, idx, pvlist, pid_pvlist, samples, rate):
         self.prep_user_buffer(idx, rate, samples=samples)
         self.get_pvs_data_pair(pvlist, rate)
-        if settings.bsss_usr_buff_acq:
-            self.get_pvs_data_single(pid_pvlist, rate)
 
     def get_pv_lists(self, idx, signal_pvs, variable_type_suffixes):
         pvlist = []
@@ -112,7 +110,7 @@ class USR_BUFF_TESTER:
             # Check if the bsa buffers changed in time.
             self.check_pair_for_diff_pv_data(pv_name, pv_data)
 
-            # Check if the number of elements are correct (only for BSA)
+            # Check if the number of elements are correct (only for testing number of elements)
             if settings.usr_buff_acq_mode == "elements" or settings.bsss_acq_mode == "elements":
                 self.check_number_of_elements_usr_buff(pv_name, samples)
 
@@ -149,7 +147,7 @@ class USR_BUFF_TESTER:
         # Assign global user buffer control and settings PVs
         # Get PVs to control and settings
         bsa_buff_prefix = settings.tpg.replace('TPG', 'BSA', 1)
-
+        
         control_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':CTRL'
         meascnt_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':MEASCNT'
         rate_mode_pv = bsa_buff_prefix + ':' + str(settings.bsa_usr_buff_idx) + ':RATEMODE'           
@@ -250,30 +248,6 @@ class USR_BUFF_TESTER:
                     break
         else:
             time.sleep(settings.bsss_max_time)
-    
-    def wait_pid_bsss(self, pid_pvlist):
-        loop = 0
-
-        if settings.bsss_acq_mode == "elements":
-            while True:
-                time.sleep(0.5)
-                if all(len(value.signal_data1) >= settings.bsss_num_samples for value in self.user_buffer_pid_pv_data.values()):
-                    break
-        else:
-            time.sleep(settings.bsss_max_time)
-
-    def get_pvs_data_single(self, pid_pvlist, rate):
-        print("Acquiring PID PV arrays for rate " + rate)
-        for pv_name in pid_pvlist:
-            self.user_buffer_pid_pv_data[pv_name] = PV_DATA([],[])
-            camonitor(pv_name, callback=self.on_monitor_consec_scalar_usr_buff)
-
-        self.trigger_user_buffer(settings.bsa_usr_buff_control_pv)
-
-        self.wait_pid_bsss(pid_pvlist)
-        
-        for pv_name in pid_pvlist:
-            camonitor_clear(pv_name)
 
     def on_monitor_consec_scalar_usr_buff(self, pvname=None, value=None, **kw):
         self.user_buffer_pid_pv_data[pvname].signal_data1.append(value)
@@ -371,12 +345,8 @@ class USR_BUFF_TESTER:
             print("PID Update Rate:             OK (" + str(pid_update_rate) + "Hz)")
 
     def compute_PID_update_rate(self, pv_name):
-        if settings.bsss_usr_buff_acq:
-            signal_data = self.user_buffer_pid_pv_data[pv_name].signal_data1
-            print("\nPID sample     --> " + self.format_array(signal_data, threshold = 15))
-        else:
-            print("\nTested with first sample")
-            signal_data = self.user_buffer_pv_data[pv_name].signal_data1
+        print("\nTested with first sample")
+        signal_data = self.user_buffer_pv_data[pv_name].signal_data1
         if len(signal_data) == 0:
             return -2
         PID_data = list(reversed(signal_data))         

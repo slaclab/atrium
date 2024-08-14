@@ -122,12 +122,18 @@ test_type = ""
 # Number of loops to wait for data acquisition before timing out
 loop_timeout = 3
 
+# Path for bldDecode
+bld_decode_path = ""
+
+# The bld configurations to test (1-4)
+bld_config_list = list(range(1,5))
+
 ##  TPG Table Below
 ##  -------     ------------------------
 ##  TPG ioc     TPG Prefix 
 ##  -------     ------------------------ 
 ##  B34 TPG     GLOBAL=TPG:SYS0:1   (default for B34 TPG and LCLS2 production)
-##  B84 TPG     GLOBAL=TPG:SYS0:2
+##  B84 TPG     GLOBAL=TPG:B084:2
 ##  B15 TPG     GLOBAL=TPG:B015:1
 ##  -------     ------------------------
 
