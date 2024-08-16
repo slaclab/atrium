@@ -50,7 +50,7 @@ class ARG_PARSER:
         parser.add_argument('--bsss_num_samples', dest='bsss_num_samples', help='number of BSSS samples to acquire (default: 2)')
         parser.add_argument('--bsss_max_time', dest='bsss_max_time', help='max time for BSSS to acquire (seconds)')
         parser.add_argument('--test_type', dest='test_type', default="all", help='sys: test only system buffers, usr: test only user buffers, bld: test only bld freqs, all: test all')
-        parser.add_argument('--bld_decode_path', dest='bld_decode_path', default="$PACKAGE_SITE_TOP/bldDecode/current", help='path to file location of bldDecode')
+        parser.add_argument('--bld_decode_path', dest='bld_decode_path', default="$PACKAGE_SITE_TOP/bldDecode/current", help='path to file location of bldDecode (default: $PACKAGE_SITE_TOP/bldDecode/current)')
         parser.add_argument('--bld_configs', dest='bld_configs', nargs='+', default='', help='list of bld frequencies to test (default to all frequencies)')
 
         # Parse out arguments

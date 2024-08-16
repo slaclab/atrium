@@ -89,8 +89,11 @@ bsss_usr_buff_idx_range = bsa_usr_buff_idx_range
 # BSSS user buffer fixed rate options
 bsss_usr_buff_fixed_rates = {"1Hz":1,"10Hz":10,"100Hz":100}
 
-# BSSS data collection format
+# BSSS data collection format user buffers
 bsss_usr_buff_acq = False
+
+# BSSS data collection format system buffers
+bsss_sys_buff_acq = False
 
 # Fault buffer suffixes 
 flt_buff_suffixes = ["FLTB0","FLTB1","FLTB2","FLTB3"] 

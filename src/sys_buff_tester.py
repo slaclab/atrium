@@ -19,7 +19,9 @@ class SYS_BUFF_TESTER:
         
         self.signal_data1 = []
         self.signal_data2 = []
-        self.sample_num = 0
+
+        # self.sample_num = 0
+        # self.element_num = 0
 
     def core_test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_check_signal_change_in_time, fcn_check_PID_update_rate):
         for dest_suffix in settings.system_buff_dest_suffixes:
@@ -57,76 +59,100 @@ class SYS_BUFF_TESTER:
     def reset_data(self):
         self.signal_data1 = []
         self.signal_data2 = []
-        self.sample_num = 0
+        # self.sample_num = 0
 
-    def on_monitor_single_sys_buff(self, pv_name=None, value=None, **kw):
-        if self.sample_num == 0:
+    def on_monitor_single_sys_buff(self, pvname=None, value=None, **kw):
+        if len(self.signal_data1) == 0:
             self.signal_data1 = value
-            self.sample_num += 1
 
-    def on_monitor_pair_sys_buff(self, pv_name=None, value=None, **kw):
-        if self.sample_num == 0:
+    def on_monitor_pair_sys_buff(self, pvname=None, value=None, **kw):
+        if len(self.signal_data1) == 0:
             self.signal_data1 = value
-            self.sample_num += 1
-        elif self.sample_num == 1:
+        elif len(self.signal_data2) == 0:
             self.signal_data2 = value
-            self.sample_num += 1
+
+    def on_monitor_pair_bsss_sys_buff(self, pvname=None, value=None, **kw):
+        if len(self.signal_data1) < settings.bsss_num_samples:
+            self.signal_data1.append(value)
+        if len(self.signal_data2) < settings.bsss_num_samples:
+            self.signal_data2.append(value)
+
+    def on_monitor_single_bsss_sys_buff(self, pvname=None, value=None, **kw):
+        if len(self.signal_data1) < settings.bsss_num_samples:
+            self.signal_data1.append(value)
 
     def get_pv_data_single(self, pv_name):
         # Prepare global variables for write access 
         self.reset_data()
 
-        if not settings.bsa_usr_buff:
-            # System buffer
-            pv = PV(pv_name)
-            pv.wait_for_connection(timeout=None)
-            if np.array(pv.value).size > 0:
-                # Scalar/Waveform PV
-                cb=pv.add_callback(callback=self.on_monitor_single_sys_buff)
-                loop = 0
-                while self.sample_num < 1:
-                    time.sleep(settings.sys_buff_wait_time)
-                    loop += 1
-                    if loop > settings.loop_timeout:
-                        self.logger.error("[ERROR] -    Loop timed out. Could not acquire PID data for " + pv_name)
-                        self.logger.error("             Is PV empty?")
-                        return
-
-                pv.remove_callback(cb) 
-                print("Reading sample --> "+str(self.signal_data1))
-                return True
+        # System buffer
+        pv = PV(pv_name)
+        pv.wait_for_connection(timeout=None)
+        if np.array(pv.value).size > 0:
+            # Scalar/Waveform PV
+            if settings.bsss_sys_buff_acq:
+                cb = pv.add_callback(callback=self.on_monitor_single_bsss_sys_buff)
             else:
-                # Empty PV
-                self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
-                return False
+                cb = pv.add_callback(callback=self.on_monitor_single_sys_buff)
+
+            if settings.bsss_sys_buff_acq:
+                if settings.bsss_acq_mode == "time":
+                        start = time.time()
+                while True:
+                    time.sleep(0.5)
+                    if len(self.signal_data1) >= settings.bsss_num_samples:
+                        break
+                    current = time.time()
+                    if settings.bsss_acq_mode == "time" and (current - start) > settings.bsss_max_time:
+                        break
+            else:
+                while len(self.signal_data1) == 0:
+                    time.sleep(settings.sys_buff_wait_time)
+            
+            pv.remove_callback(cb) 
+            print("Reading sample --> "+ self.format_array(self.signal_data1, threshold = 15))
+            return True
+        else:
+            # Empty PV
+            self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
+            return False
 
     def get_pv_data_pair(self, pv_name): 
         # Prepare global variables for write access
         self.reset_data()
 
-        if not settings.bsa_usr_buff:
-            # System buffer
-            pv = PV(pv_name)
-            pv.wait_for_connection(timeout=None)
-            if np.array(pv.value).size > 0:
-                # Scalar/Waveform PV
-                cb=pv.add_callback(callback=self.on_monitor_pair_sys_buff)
-                loop = 0
-                while self.sample_num < 2:
-                    time.sleep(settings.sys_buff_wait_time)
-                    loop += 1
-                    if loop > settings.loop_timeout:
-                        self.logger.error("[ERROR] -    Could not acquire data for " + pv_name)
-                        self.logger.error("             Loop timed out. Is PV empty?")
-                        return
-                pv.remove_callback(cb) 
-                print("First sample   --> "+str(self.signal_data1))
-                print("Second sample  --> "+str(self.signal_data2))
-                return True
+        # System buffer
+        pv = PV(pv_name)
+        pv.wait_for_connection(timeout=None)
+        if np.array(pv.value).size > 0:
+            # Scalar/Waveform PV
+            if settings.bsss_sys_buff_acq:
+                cb = pv.add_callback(callback=self.on_monitor_pair_bsss_sys_buff)
             else:
-                # Empty PV
-                self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
-                return False
+                cb = pv.add_callback(callback=self.on_monitor_pair_sys_buff)
+
+            if settings.bsss_sys_buff_acq:
+                if settings.bsss_acq_mode == "time":
+                        start = time.time()
+                while True:
+                    time.sleep(0.5)
+                    if len(self.signal_data1) >= settings.bsss_num_samples and len(self.signal_data2) >= settings.bsss_num_samples:
+                        break
+                    current = time.time()
+                    if settings.bsss_acq_mode == "time" and (current - start) > settings.bsss_max_time:
+                        break
+            else:
+                while len(self.signal_data1) == 0 or len(self.signal_data2) == 0:
+                    time.sleep(settings.sys_buff_wait_time)
+
+            pv.remove_callback(cb) 
+            print("First sample   --> "+ self.format_array(self.signal_data1, threshold = 15))
+            print("Second sample  --> "+ self.format_array(self.signal_data2, threshold = 15))
+            return True
+        else:
+            # Empty PV
+            self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
+            return False
 
     def compute_waveform_PID_update_rate(self):
         #PID data from farthest away to most recent
@@ -187,7 +213,7 @@ class SYS_BUFF_TESTER:
             self.logger.critical("             Sampling too fast or is the PV value constant?")
         else:
             print("Pair Of Samples Diff:        OK")
-            
+
     def check_pv_for_updated_data(self, pv_name):
         # Check to see if we always get the same value in the latest sample 
         if (isinstance(self.signal_data2, (list, tuple, np.ndarray)) and (np.array(self.signal_data2) == np.array(self.signal_data2)[-1]).all()) or \
@@ -230,9 +256,8 @@ class SYS_BUFF_TESTER:
         # Check if the bsa buffers changed in time.
         self.check_pair_for_diff_pv_data(pv_name)
 
-    
     def check_waveform_PID_update_rate(self, pv_name):
-        if "PID" in pv_name and "HST" in pv_name:
+        if "PID" in pv_name:
             # Sample PID PV data
             success = self.get_pv_data_single(pv_name)
             if not success:
@@ -264,16 +289,28 @@ class SYS_BUFF_TESTER:
                 self.compare_waveform_PID_update_rate(pv_name, rate)
 
     def test_bsa_system_buffers(self):
+        settings.bsss_sys_buff_acq = False
         print("Checking BSA system buffers.")
         list_of_signal_pvs = settings.service_pv_prefixes["BSA"]
         self.core_test_system_buffers(list_of_signal_pvs, settings.bsa_hst_type_suffixes,
-        self.check_waveform_signal_change_in_time, self.check_waveform_PID_update_rate) 
+        self.check_waveform_signal_change_in_time, self.check_waveform_PID_update_rate)
 
     def test_bsss_system_buffers(self):
+        settings.bsss_sys_buff_acq = True
         print("Checking BSSS system buffers.")
         list_of_signal_pvs = settings.service_pv_prefixes["BSSS"]
         self.core_test_system_buffers(list_of_signal_pvs, settings.bsss_scalar_type_suffixes,
-        self.check_scalar_signal_change_in_time, self.check_scalar_PID_update_rate)
+        self.check_waveform_signal_change_in_time, self.check_waveform_PID_update_rate)
+
+    def format_array(self, array, threshold):
+        # returns string of array to print
+        leading_elements = preceding_elements = 3
+        if len(array) > threshold:
+            head_str = ', '.join(map(str, array[:leading_elements]))
+            tail_str = ', '.join(map(str, array[-preceding_elements:]))
+            return "[" + head_str + " ... " + tail_str + "] (" + str(len(array)) + ")"
+        else:
+            return "[" + ', '.join(map(str, array)) + "] (" + str(len(array)) + ")"
 
     # def test_bsa_fault_buffers(self):
     #     print("Checking BSA fault buffers.")

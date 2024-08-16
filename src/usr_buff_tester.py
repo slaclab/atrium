@@ -128,11 +128,11 @@ class USR_BUFF_TESTER:
 
         leading_elements = preceding_elements = 3
         if len(array) > threshold:
-            head_str = ' '.join(map(str, array[:leading_elements]))
-            tail_str = ' '.join(map(str, array[-preceding_elements:]))
+            head_str = ', '.join(map(str, array[:leading_elements]))
+            tail_str = ', '.join(map(str, array[-preceding_elements:]))
             return "[" + head_str + " ... " + tail_str + "] (" + str(len(array)) + ")"
         else:
-            return "[" + ' '.join(map(str, array)) + "] (" + str(len(array)) + ")"
+            return "[" + ', '.join(map(str, array)) + "] (" + str(len(array)) + ")"
 
 #### USER BUFFER MANIPULATION FUNCTIONS
 
@@ -224,30 +224,30 @@ class USR_BUFF_TESTER:
             self.wait_bsa(pvlist)
 
     def wait_bsa(self, pvlist):
-        loop = 0
-
-        if settings.usr_buff_acq_mode == "elements":
-            while True:
-                time.sleep(0.5)
-                if self.sample_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_elements for value in self.user_buffer_pv_data.values()):
-                    break
-                elif self.sample_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_elements for value in self.user_buffer_pv_data.values()):
-                    break
-        else:
-            time.sleep(settings.bsa_usr_buff_max_time)
+        if settings.usr_buff_acq_mode == "time":
+            start = time.time()
+        while True:
+            time.sleep(0.5)
+            if self.sample_num == 1 and all(len(value.signal_data1) >= settings.bsa_usr_buff_elements for value in self.user_buffer_pv_data.values()):
+                break
+            elif self.sample_num == 2 and all(len(value.signal_data2) >= settings.bsa_usr_buff_elements for value in self.user_buffer_pv_data.values()):
+                break
+            current = time.time()
+            if settings.usr_buff_acq_mode == "time" and (current - start) > settings.bsa_usr_buff_max_time:
+                break
 
     def wait_bsss(self, pvlist):
-        loop = 0
-
-        if settings.bsss_acq_mode == "elements":
-            while True:
-                time.sleep(0.5)
-                if self.sample_num == 1 and all(len(value.signal_data1) >= settings.bsss_num_samples for value in self.user_buffer_pv_data.values()):
-                    break
-                elif self.sample_num == 2 and all(len(value.signal_data2) >= settings.bsss_num_samples for value in self.user_buffer_pv_data.values()):
-                    break
-        else:
-            time.sleep(settings.bsss_max_time)
+        if settings.usr_buff_acq_mode == "time":
+            start = time.time()
+        while True:
+            time.sleep(0.5)
+            if self.sample_num == 1 and all(len(value.signal_data1) >= settings.bsss_num_samples for value in self.user_buffer_pv_data.values()):
+                break
+            elif self.sample_num == 2 and all(len(value.signal_data2) >= settings.bsss_num_samples for value in self.user_buffer_pv_data.values()):
+                break
+            current = time.time()
+            if settings.usr_buff_acq_mode == "time" and (current - start) > settings.bsss_max_time:
+                break
 
     def on_monitor_consec_scalar_usr_buff(self, pvname=None, value=None, **kw):
         self.user_buffer_pid_pv_data[pvname].signal_data1.append(value)
