@@ -70,13 +70,13 @@ class SYS_BUFF_TESTER:
             self.signal_data2 = value
 
     def on_monitor_pair_bsss_sys_buff(self, pvname=None, value=None, **kw):
-        if self.sample_num == 1:
+        if self.sample_num == 1 and len(self.signal_data1) < settings.bsss_num_samples:
             self.signal_data1.append(value)
-        elif self.sample_num == 2:
+        elif self.sample_num == 2 and len(self.signal_data2) < settings.bsss_num_samples:
             self.signal_data2.append(value)
 
     def on_monitor_single_bsss_sys_buff(self, pvname=None, value=None, **kw):
-        if self.sample_num == 1:
+        if self.sample_num == 1 and len(self.signal_data1) < settings.bsss_num_samples:
             self.signal_data1.append(value)
 
     def get_pv_data_single(self, pv_name):

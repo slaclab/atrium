@@ -401,23 +401,20 @@ if __name__ == "__main__":
     # Create a parser object for .cmd files
     parser = CMD_PARSER()
     parser.parse_cmd(cmd)
-     
-    match settings.test_type:
-        case "sys" | "all":
-            # Create a tester object for BSA system buffers
-            system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
-            system_buffer_tester.test_bsa_system_buffers  ()
-            system_buffer_tester.test_bsss_system_buffers ()
-    
-        case "usr" | "all":    
-            # Create a tester object for BSA user buffers
-            user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
-            user_buffer_tester.test_bsa_user_buffers()
-            user_buffer_tester.test_bsss_user_buffers()
 
-        case "bld" | "all":
-            bld_tester = bld_tester.BLD_TESTER()
-            bld_tester.test_bld_configurations()
+    if settings.test_type == "sys" or settings.test_type == "all":
+        system_buffer_tester = sys_buff_tester.SYS_BUFF_TESTER()
+        system_buffer_tester.test_bsa_system_buffers  ()
+        system_buffer_tester.test_bsss_system_buffers ()
+
+    if settings.test_type == "usr" or settings.test_type == "all":
+        user_buffer_tester = usr_buff_tester.USR_BUFF_TESTER()
+        user_buffer_tester.test_bsa_user_buffers()
+        user_buffer_tester.test_bsss_user_buffers()
+        
+    if settings.test_type == "bld" or settings.test_type == "bld":
+        bld_tester = bld_tester.BLD_TESTER()
+        bld_tester.test_bld_configurations()
     
 #   tester.test_bsa_fault_buffers   ()
 #   tester.test_bsss_fault_buffers() 
