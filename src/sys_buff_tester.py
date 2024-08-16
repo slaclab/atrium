@@ -19,9 +19,7 @@ class SYS_BUFF_TESTER:
         
         self.signal_data1 = []
         self.signal_data2 = []
-
-        # self.sample_num = 0
-        # self.element_num = 0
+        self.sample_num = 1
 
     def core_test_system_buffers(self, signal_pvs, variable_type_suffixes, fcn_check_signal_change_in_time, fcn_check_PID_update_rate):
         for dest_suffix in settings.system_buff_dest_suffixes:
@@ -59,7 +57,7 @@ class SYS_BUFF_TESTER:
     def reset_data(self):
         self.signal_data1 = []
         self.signal_data2 = []
-        # self.sample_num = 0
+        self.sample_num = 1
 
     def on_monitor_single_sys_buff(self, pvname=None, value=None, **kw):
         if len(self.signal_data1) == 0:
@@ -72,13 +70,13 @@ class SYS_BUFF_TESTER:
             self.signal_data2 = value
 
     def on_monitor_pair_bsss_sys_buff(self, pvname=None, value=None, **kw):
-        if len(self.signal_data1) < settings.bsss_num_samples:
+        if self.sample_num == 1:
             self.signal_data1.append(value)
-        if len(self.signal_data2) < settings.bsss_num_samples:
+        elif self.sample_num == 2:
             self.signal_data2.append(value)
 
     def on_monitor_single_bsss_sys_buff(self, pvname=None, value=None, **kw):
-        if len(self.signal_data1) < settings.bsss_num_samples:
+        if self.sample_num == 1:
             self.signal_data1.append(value)
 
     def get_pv_data_single(self, pv_name):
@@ -96,15 +94,8 @@ class SYS_BUFF_TESTER:
                 cb = pv.add_callback(callback=self.on_monitor_single_sys_buff)
 
             if settings.bsss_sys_buff_acq:
-                if settings.bsss_acq_mode == "time":
-                        start = time.time()
-                while True:
-                    time.sleep(0.5)
-                    if len(self.signal_data1) >= settings.bsss_num_samples:
-                        break
-                    current = time.time()
-                    if settings.bsss_acq_mode == "time" and (current - start) > settings.bsss_max_time:
-                        break
+                self.sample_num = 1
+                self.wait(self.sample_num)
             else:
                 while len(self.signal_data1) == 0:
                     time.sleep(settings.sys_buff_wait_time)
@@ -132,15 +123,10 @@ class SYS_BUFF_TESTER:
                 cb = pv.add_callback(callback=self.on_monitor_pair_sys_buff)
 
             if settings.bsss_sys_buff_acq:
-                if settings.bsss_acq_mode == "time":
-                        start = time.time()
-                while True:
-                    time.sleep(0.5)
-                    if len(self.signal_data1) >= settings.bsss_num_samples and len(self.signal_data2) >= settings.bsss_num_samples:
-                        break
-                    current = time.time()
-                    if settings.bsss_acq_mode == "time" and (current - start) > settings.bsss_max_time:
-                        break
+                self.sample_num = 1
+                self.wait(self.sample_num)
+                self.sample_num = 2
+                self.wait(self.sample_num)
             else:
                 while len(self.signal_data1) == 0 or len(self.signal_data2) == 0:
                     time.sleep(settings.sys_buff_wait_time)
@@ -153,6 +139,19 @@ class SYS_BUFF_TESTER:
             # Empty PV
             self.logger.error("[ERROR] -    " + pv_name + " is empty!!")
             return False
+
+    def wait(self, acquisition_num):
+        if settings.bsss_acq_mode == "time":
+            start = time.time()
+        while True:
+            time.sleep(0.5)
+            if acquisition_num == 1 and len(self.signal_data1) >= settings.bsss_num_samples:
+                break
+            if acquisition_num == 2 and len(self.signal_data2) >= settings.bsss_num_samples:
+                break
+            current = time.time()
+            if settings.bsss_acq_mode == "time" and (current - start) > settings.bsss_max_time:
+                break
 
     def compute_waveform_PID_update_rate(self):
         #PID data from farthest away to most recent
