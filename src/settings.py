@@ -131,6 +131,12 @@ bld_decode_path = ""
 # The bld configurations to test (1-4)
 bld_config_list = list(range(1,5))
 
+# BLD channels found as bldChannelName in st.cmd
+bld_channels = []
+
+# BLD fixed rates options
+bld_fixed_rates = {"1Hz":1,"10Hz":10,"100Hz":100,"1kHz":1.0e+03,"10kHz":10.0e+03,"71.5kHz":7.0e+04,"1MHz":9.1e+05}
+
 ##  TPG Table Below
 ##  -------     ------------------------
 ##  TPG ioc     TPG Prefix 

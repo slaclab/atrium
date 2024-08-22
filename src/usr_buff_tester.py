@@ -329,8 +329,8 @@ class USR_BUFF_TESTER:
 
     def compare_PID_update_rate(self, pv_name, update_rate, diff):
         # We have a user buffer, extract update rate from buffer rate dictionary  
-        pv_update_rate = update_rate
-        pid_update_rate = settings.core_linac_freq / diff
+        pid_update_rate = update_rate
+        pv_update_rate = settings.core_linac_freq / diff
         if diff == -1:
             self.logger.error("[ERROR] -    " + pv_name + " PID diffs are not consistent between elements")
             self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")

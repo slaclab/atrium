@@ -367,6 +367,11 @@ class CMD_PARSER:
 
         settings.service_pv_prefixes[service].append(dev + ":" + secn)
 
+    def extract_bld_channels(self, line):
+        channel_pattern = r',\s*"(.+)"\)'
+        channel_name = re.search(channel_pattern, line).group(1)
+        settings.bld_channels.append(channel_name)
+
     def parse_cmd(self, st_cmd):
         # Initialize cmd_env_paths dictionary
         for line in st_cmd:
@@ -382,6 +387,8 @@ class CMD_PARSER:
             if "bld.db" in line:
                 line = self.apply_substitutions(line)
                 self.extract_service_pv_prefix(line, "BLD")
+            if "bldChannelName" in line:
+                self.extract_bld_channels(line)
         #print(caget(service_pv_prefixes["BSA"][0] + "PIDSCD1H"))
         
         print("st.cmd reading complete.\n")
