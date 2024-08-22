@@ -28,6 +28,7 @@ class BLD_TESTER:
 
     def test_bld_configurations(self):
         print("Checking BLD configurations")
+
         for frequency in settings.bld_config_list:
 
             print("\n------------------------")
@@ -41,7 +42,9 @@ class BLD_TESTER:
             for rate_name, rate_val in settings.bld_fixed_rates.items():
                 print("\n!!!!!!!-- RATE " + rate_name + " --!!!!!!!\n")
 
-                packets = self.get_packet_pair(frequency, rate_name)
+                success = self.get_packet_pair(frequency, rate_name)
+                if not success:
+                    continue
 
                 # Check if the channel names are correct
                 self.check_packets_channels()
@@ -55,7 +58,7 @@ class BLD_TESTER:
                 self.check_packet_PID_update_rate(frequency, rate_name, rate_val, packet_num = 2)
                 print("Delta Packet 2   --> ", self.format_array(self.packet2["delta_list"], threshold = 10))
                 self.check_packet_delta_update_rate(frequency, rate_name, rate_val, packet_num = 2)
-                self.check_PID_diff_between_packet(frequency, rate_val)
+                self.check_PID_diff_between_packet(frequency, rate_name)
                 
                 for channel in self.packet1["channel_info"].keys():
                     print("\n*****<< " + " Channel " + channel + " >>*****\n")
@@ -84,6 +87,8 @@ class BLD_TESTER:
         self.config_freq(freq, rate)
         self.enable_all_channels()
         output = self.run_bld_decode(num_packets = 2)
+        if not output:
+            return False
         packets = self.extract_packets(output)
 
         # Store information from packet 1
@@ -97,13 +102,10 @@ class BLD_TESTER:
         self.packet2["pid_list"] = pid_list
         self.packet2["delta_list"] = delta_list
         self.packet2["channel_info"] = channel_data
+        return True
 
     def config_freq(self, frequency, rate):
-        self.bld_global_pv_control = self.prefix + ":BLD_LOCAL"
-        self.bld_multicast_ip = self.prefix + ":BLD" + str(frequency) + "_MULT_ADDR"
-        self.bld_multicast_port = self.prefix + ":BLD" + str(frequency) + "_MULT_PORT"
-        self.bld_fixed_rate = self.prefix + ":BLD" + str(frequency) + "_FIXEDRATE"
-        self.bld_acquisition = self.prefix + ":BLD" + str(frequency) + "_ACQ"
+        self.set_control_pv(frequency)
 
         # TODO: Use random multicast IP and port instead of fixed
         caput(self.bld_global_pv_control, 0)
@@ -111,20 +113,34 @@ class BLD_TESTER:
         caput(self.bld_multicast_port, 10148)
         caput(self.bld_fixed_rate, rate)
         caput(self.bld_acquisition, 1)
+    
+    def set_control_pv(self, frequency):
+        self.bld_global_pv_control = self.prefix + ":BLD_LOCAL"
+        self.bld_multicast_ip = self.prefix + ":BLD" + str(frequency) + "_MULT_ADDR"
+        self.bld_multicast_port = self.prefix + ":BLD" + str(frequency) + "_MULT_PORT"
+        self.bld_fixed_rate = self.prefix + ":BLD" + str(frequency) + "_FIXEDRATE"
+        self.bld_acquisition = self.prefix + ":BLD" + str(frequency) + "_ACQ"
 
     def reset_config(self):
-        caput(self.bld_global_pv_control,1)
-        caput(self.bld_multicast_ip,'')
-        caput(self.bld_multicast_port,0)
-        caput(self.bld_fixed_rate, "1Hz")
-        caput(self.bld_acquisition, 0)
+        for freq in settings.bld_config_list:
+            self.set_control_pv(freq)
+            caput(self.bld_global_pv_control,1)
+            caput(self.bld_multicast_ip,'')
+            caput(self.bld_multicast_port,0)
+            caput(self.bld_fixed_rate, "1Hz")
+            caput(self.bld_acquisition, 0)
 
     def run_bld_decode(self, num_packets):
-        output_info = subprocess.run(["./bldDecode", "-b", "EM2K0:XGMD:HPS:BLD_PAYLOAD", "-p", "10148", "-n", str(num_packets), "-d"], capture_output=True, cwd = self.bld_decode_path)
-        output_bytestr = output_info.stdout
-        output = output_bytestr.decode('utf-8')
-        return output
-
+        try:
+            output_info = subprocess.run(["./bldDecode", "-b", "EM2K0:XGMD:HPS:BLD_PAYLOAD", "-p", "10148", "-n", 
+                str(num_packets), "-d"], capture_output=True, cwd = self.bld_decode_path, timeout = 5)
+            output_bytestr = output_info.stdout
+            output = output_bytestr.decode('utf-8')
+            return output
+        except subprocess.TimeoutExpired:
+            self.logger.error("[ERROR] -    BldDecode is not responding. Is the configurations for BLD correct?")
+            return
+    
     # TODO: Works with default path but needs to be tested more (especially if user inputs relative/absolute path)
     def replace_path_env(self, bld_decode_path):
         #replace env variables in bldDecode path
@@ -201,6 +217,8 @@ class BLD_TESTER:
             # Get channel list of data 
             self.config_freq(freq, rate = "10kHz")
             packet = self.run_bld_decode(num_packets = 1)
+            if not packet:
+                return
             pid_list, delta_list, channel_data = self.parse_packet(packet)
             channel_list = channel_data.keys()
 
@@ -210,6 +228,8 @@ class BLD_TESTER:
                 self.logger.error("[ERROR] -    " + "List of enabled channels does not match decoded channels")
                 self.logger.error("             " + "Enabled channels: " + str(list(random_channels)))
                 self.logger.error("             " + "Decoded channels: " + str(list(channel_list)))
+            
+            self.reset_config()
 
     def check_packets_channels(self):
         if set(settings.bld_channels) != set(self.packet1["channel_info"].keys()) or set(settings.bld_channels) != set(self.packet2["channel_info"].keys()):
@@ -247,7 +267,6 @@ class BLD_TESTER:
         delta_update_rate = self.compute_PID_or_delta_update_rate(packet_num, isPID = False)
         self.compare_delta_update_rate(freq, rate_name, rate, delta_update_rate)
 
-    #TODO: Change variable names
     def compute_PID_or_delta_update_rate(self, packet_num, isPID):
         if packet_num == 1 and isPID:
             signal_data = self.packet1["pid_list"]
@@ -260,12 +279,12 @@ class BLD_TESTER:
 
         if len(signal_data) < 2:
             return -2
-        PID_data = list(reversed(signal_data))
-        prev_diff = PID_data[0] - PID_data[1]
-        for i in range(2, len(PID_data)):
-            prev_PID = PID_data[i-1]
-            cur_PID = PID_data[i]
-            diff = prev_PID - cur_PID
+        signal_data = list(reversed(signal_data))
+        prev_diff = signal_data[0] - signal_data[1]
+        for i in range(2, len(signal_data)):
+            prev_val = signal_data[i - 1]
+            cur_val = signal_data[i]
+            diff = prev_val - cur_val
             if np.not_equal(diff, prev_diff):
                 print("diff", diff)
                 #PID update rate is inconsistent
