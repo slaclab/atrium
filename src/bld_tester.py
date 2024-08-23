@@ -22,9 +22,10 @@ class BLD_TESTER:
         self.bld_fixed_rate = ""
         self.bld_acquisition = ""
 
-        # key: type of data, val: data
         self.packet1 = {}
         self.packet2 = {}
+
+### CORE FUNCTIONS
 
     def test_bld_configurations(self):
         print("Checking BLD configurations")
@@ -35,7 +36,7 @@ class BLD_TESTER:
             print("Testing Frequency " + str(frequency))
             print("------------------------")
 
-            # Test number of channels
+            # Test number of channels by enabling/disabling channels randomly
             self.test_num_channels(frequency)
 
             # Test for all fixed rates
@@ -49,16 +50,7 @@ class BLD_TESTER:
                 # Check if the channel names are correct
                 self.check_packets_channels()
 
-                # Test the channel from bldDecode is equal to channels in st.cmd
-                print("PID Packet 1     --> ", self.format_array(self.packet1["pid_list"], threshold = 10))
-                self.check_packet_PID_update_rate(frequency, rate_name, rate_val, packet_num = 1)
-                print("Delta Packet 1   --> ", self.format_array(self.packet1["delta_list"], threshold = 10))
-                self.check_packet_delta_update_rate(frequency, rate_name, rate_val, packet_num = 1)
-                print("PID Packet 2     --> ", self.format_array(self.packet2["pid_list"], threshold = 10))
-                self.check_packet_PID_update_rate(frequency, rate_name, rate_val, packet_num = 2)
-                print("Delta Packet 2   --> ", self.format_array(self.packet2["delta_list"], threshold = 10))
-                self.check_packet_delta_update_rate(frequency, rate_name, rate_val, packet_num = 2)
-                self.check_PID_diff_between_packet(frequency, rate_name)
+                self.all_PID_delta_tests(frequency, rate_name, rate_val)
                 
                 for channel in self.packet1["channel_info"].keys():
                     print("\n*****<< " + " Channel " + channel + " >>*****\n")
@@ -77,11 +69,42 @@ class BLD_TESTER:
                     # Test data changes between packets 
                     self.check_pair_for_diff_channel_data(channel)                    
 
-                self.reset_config()
+            self.reset_config()
+
+### CHANNEL CONFIGURATION
 
     def enable_all_channels(self):
         for ch in settings.bld_channels:
             caput(self.prefix + ":" + ch + "BLDCHNMASK", 1, wait=True)
+
+    def config_freq(self, frequency, rate):
+        self.set_control_pv(frequency)
+
+        # TODO: Use random multicast IP and port instead of fixed
+        caput(self.bld_global_pv_control, 0)
+        caput(self.bld_multicast_ip, "134.79.216.240")
+        caput(self.bld_multicast_port, 10148)
+        caput(self.bld_fixed_rate, rate)
+        caput(self.bld_acquisition, 1)
+
+    def reset_config(self):
+        # Reset configurations for frequencies 1-4
+        for freq in range(1, 5):
+            self.set_control_pv(freq)
+            caput(self.bld_global_pv_control,1)
+            caput(self.bld_multicast_ip,'')
+            caput(self.bld_multicast_port,0)
+            caput(self.bld_fixed_rate, "1Hz")
+            caput(self.bld_acquisition, 0)
+
+    def set_control_pv(self, frequency):
+        self.bld_global_pv_control = self.prefix + ":BLD_LOCAL"
+        self.bld_multicast_ip = self.prefix + ":BLD" + str(frequency) + "_MULT_ADDR"
+        self.bld_multicast_port = self.prefix + ":BLD" + str(frequency) + "_MULT_PORT"
+        self.bld_fixed_rate = self.prefix + ":BLD" + str(frequency) + "_FIXEDRATE"
+        self.bld_acquisition = self.prefix + ":BLD" + str(frequency) + "_ACQ"
+
+### DATA ACQUISITION
 
     def get_packet_pair(self, freq, rate):
         self.config_freq(freq, rate)
@@ -102,33 +125,18 @@ class BLD_TESTER:
         self.packet2["pid_list"] = pid_list
         self.packet2["delta_list"] = delta_list
         self.packet2["channel_info"] = channel_data
+
         return True
 
-    def config_freq(self, frequency, rate):
-        self.set_control_pv(frequency)
-
-        # TODO: Use random multicast IP and port instead of fixed
-        caput(self.bld_global_pv_control, 0)
-        caput(self.bld_multicast_ip, "134.79.216.240")
-        caput(self.bld_multicast_port, 10148)
-        caput(self.bld_fixed_rate, rate)
-        caput(self.bld_acquisition, 1)
-    
-    def set_control_pv(self, frequency):
-        self.bld_global_pv_control = self.prefix + ":BLD_LOCAL"
-        self.bld_multicast_ip = self.prefix + ":BLD" + str(frequency) + "_MULT_ADDR"
-        self.bld_multicast_port = self.prefix + ":BLD" + str(frequency) + "_MULT_PORT"
-        self.bld_fixed_rate = self.prefix + ":BLD" + str(frequency) + "_FIXEDRATE"
-        self.bld_acquisition = self.prefix + ":BLD" + str(frequency) + "_ACQ"
-
-    def reset_config(self):
-        for freq in settings.bld_config_list:
-            self.set_control_pv(freq)
-            caput(self.bld_global_pv_control,1)
-            caput(self.bld_multicast_ip,'')
-            caput(self.bld_multicast_port,0)
-            caput(self.bld_fixed_rate, "1Hz")
-            caput(self.bld_acquisition, 0)
+    def get_packet_single(self, freq):
+        # Rate fixed at 10kHz
+        self.config_freq(freq, rate = "10kHz")
+        packet = self.run_bld_decode(num_packets = 1)
+        if not packet:
+            return
+        pid_list, delta_list, channel_data = self.parse_packet(packet)
+        channel_list = channel_data.keys()
+        return pid_list, delta_list, channel_data
 
     def run_bld_decode(self, num_packets):
         try:
@@ -165,9 +173,9 @@ class BLD_TESTER:
     def parse_packet(self, packet):
         # Regex matches events
         event_pattern = r"===> event \d+"
-        # Regex matches for pid
+        # Regex matches for pids: pulseID for event 0 and Pulse ID otherwise
         pid_pattern = r"(?:Pulse ID|pulseID)\s*: (0x[0-9A-Fa-f]+)"
-        # Regex matches for delta with PID before, captures only delta
+        # Regex matches for delta with PID before it; Captures only delta value
         delta_pattern = r"Pulse ID\s*: 0x[0-9A-Fa-f]+ delta (0x[0-9A-Fa-f]+)"
         # Regex matches "[channel name] raw=0x(hex chars), float = (decimal val)"; Captures channel, raw val, float val
         channel_pattern = r"(\w+) raw=0x[0-9A-Fa-f]+, float=([-\d.]+)"
@@ -198,6 +206,8 @@ class BLD_TESTER:
         
         return pid_list, delta_list, channel_data
 
+### BLD TESTS
+
     def test_num_channels(self, freq):
         # Randomly enable/disable channels and test if channels change accordingly
         print("\nEnable/Disable Random Channels Test")
@@ -215,12 +225,7 @@ class BLD_TESTER:
                     caput(self.prefix + ":" + ch + "BLDCHNMASK", 0, wait=True) # disable channel
 
             # Get channel list of data 
-            self.config_freq(freq, rate = "10kHz")
-            packet = self.run_bld_decode(num_packets = 1)
-            if not packet:
-                return
-            pid_list, delta_list, channel_data = self.parse_packet(packet)
-            channel_list = channel_data.keys()
+            _, _, channel_list = self.get_packet_single(freq)
 
             if set(random_channels) == set(channel_list):
                 print("Test " + str(test_num + 1) + ":         OK")
@@ -237,14 +242,17 @@ class BLD_TESTER:
             self.logger.error("             " + "Enabled channels: " + str(settings.bld_channels))
             self.logger.error("             " + "Decoded channels: " + str(list(self.packet1["channel_info"].keys())))
         else:
-            print("Correct Channels:            OK")
+            print("Correct Channels:            OK\n")
     
     def check_channel_data_change_in_time(self, channel):
         channel_vals1 = self.packet1["channel_info"][channel]
         channel_vals2 = self.packet2["channel_info"][channel]
+        packet1_same = (np.array(channel_vals1) == np.array(channel_vals1)[-1]).all()
+        packet2_same = (np.array(channel_vals2) == np.array(channel_vals2)[-1]).all()
+
         # Check to see if we always get the same value for a channel
-        if (np.array(channel_vals1) == np.array(channel_vals1)[-1]).all() or (np.array(channel_vals2) == np.array(channel_vals2)[-1]).all():
-            self.logger.warning("[WARNING]  - Channel " + channel + " keeps the same value over time.")
+        if (packet1_same or packet2_same) and len(channel_vals1) > 1 and len(channel_vals2) > 1:
+            self.logger.warning("[WARNING]  - Channel " + channel + " keeps the same value over time in a packet.")
             self.logger.warning("             Is IOC triggering the firmware correctly?")
         else:
             print("Updated With New Data:       OK")
@@ -254,10 +262,29 @@ class BLD_TESTER:
         channel_vals2 = self.packet2["channel_info"][channel]
 
         if np.array_equal(np.array(channel_vals1), np.array(channel_vals2)) and np.array(channel_vals1).size != 0:
-            self.logger.critical("[CRITICAL] - " + "Channel " + channel + " is not updated with new values.")
+            self.logger.critical("[CRITICAL] - " + "Channel " + channel + " contains same values for both packets.")
             self.logger.critical("             Sampling too fast or is the channel value constant?")
         else:
             print("Pair Of Channel Data Diff:   OK")
+
+    def all_PID_delta_tests(self, frequency, rate_name, rate_val):
+        # Skips test if PID list has one element or if delta is less than two elements
+        pid_packet_1 = self.format_array(self.packet1["pid_list"], threshold = 10)
+        pid_packet_2 = self.format_array(self.packet2["pid_list"], threshold = 10)
+        delta_packet_1 = self.format_array(self.packet1["delta_list"], threshold = 10)
+        delta_packet_2 = self.format_array(self.packet2["delta_list"], threshold = 10)
+
+        print("PID Packet 1     --> ", pid_packet_1)
+        self.check_packet_PID_update_rate(frequency, rate_name, rate_val, packet_num = 1)
+        print("Delta Packet 1   --> ", delta_packet_1)
+        self.check_packet_delta_update_rate(frequency, rate_name, rate_val, packet_num = 1)
+
+        print("PID Packet 2     --> ", pid_packet_2)
+        self.check_packet_PID_update_rate(frequency, rate_name, rate_val, packet_num = 2)
+        print("Delta Packet 2   --> ", delta_packet_2)
+        self.check_packet_delta_update_rate(frequency, rate_name, rate_val, packet_num = 2)
+        
+        self.check_PID_diff_between_packet(frequency, rate_name, rate_val)
 
     def check_packet_PID_update_rate(self, freq, rate_name, rate, packet_num):
         update_rate = self.compute_PID_or_delta_update_rate(packet_num, isPID = True)
@@ -276,9 +303,13 @@ class BLD_TESTER:
             signal_data = self.packet1["delta_list"]
         else:
             signal_data = self.packet2["delta_list"]
+        return self.compute_update_rate(signal_data)
 
-        if len(signal_data) < 2:
+    def compute_update_rate(self, signal_data):
+        if len(signal_data) == 0:
             return -2
+        elif len(signal_data) == 1:
+            return -3
         signal_data = list(reversed(signal_data))
         prev_diff = signal_data[0] - signal_data[1]
         for i in range(2, len(signal_data)):
@@ -298,8 +329,8 @@ class BLD_TESTER:
             self.logger.error("[ERROR] -    Delta diffs are not consistent between elements for Frequency " + str(freq) + " at " + rate_name)
             self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")
             self.logger.error("             Ignore this error if firmware/IOC has just been rebooted.")
-        elif diff == -2:
-            self.logger.error("[ERROR] -    Frequency " + str(freq) + " at " + rate_name + " delta array is empty or only contains one element.")
+        elif diff == -2 or diff == -3:
+            print("Note: Needs more than 1 element to test delta array")
         elif not np.equal(measured_delta_update_rate, delta_update_rate):
             self.logger.error("[ERROR] -    Frequency " + str(freq) + " at " + rate_name + " the delta update rate (" + str(measured_delta_update_rate) + \
             "Hz) doesn't match the delta update rate of " + str(delta_update_rate) + "Hz")
@@ -315,14 +346,37 @@ class BLD_TESTER:
             self.logger.error("[ERROR] -    PID diffs are not consistent between elements for Frequency " + str(freq) + " at " + rate_name)
             self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")
             self.logger.error("             Ignore this error if firmware/IOC has just been rebooted.")
-        elif diff == -2:
-            self.logger.error("[ERROR] -    Frequency " + str(freq) + " at " + rate_name + " PID array is empty or contains only one element")
+        elif diff == -2: # PID list length is 0
+            self.logger.error("[ERROR] -    Frequency " + str(freq) + " at " + rate_name + " PID array is empty")
+        elif diff == -3: # PID list length is 1
+            print("Needs more than 1 element to test PID array")
         elif not np.equal(pid_update_rate, pv_update_rate):
             self.logger.error("[ERROR] -    Frequency " + str(freq) + " at " + rate_name + " the PID update rate (" + str(pid_update_rate) + \
             "Hz) doesn't match the PV update rate of " + str(pv_update_rate) + "Hz")
             self.logger.error("             Please make sure that sampling of data is done at consistent intervals.")
         else:
             print("PID Update Rate:             OK (" + str(pid_update_rate) + "Hz)")
+
+    def check_PID_diff_between_packet(self, freq, rate_name, rate_val):
+        init_PID1 = self.packet1["pid_list"][-1] # PID of last event for packet 1
+        init_PID2 = self.packet2["pid_list"][0] # PID of first event for packet 2
+
+        measured_rate = init_PID2 - init_PID1
+        packet_update_rate = settings.core_linac_freq / measured_rate
+
+        if packet_update_rate == rate_val:
+            print("\nPID Diff Between Packets     OK")
+        else:
+            self.logger.error("[ERROR] -    PID diffs are not consistent between packets for frequency " + str(freq) + " at rate " + rate_name)
+        
+    def check_nan_in_channel_data(self, channel):
+        channel_data1 = self.packet1["channel_info"][channel]
+        channel_data2 = self.packet2["channel_info"][channel]
+
+        if np.isnan(np.sum(channel_data1)) or np.isnan(np.sum(channel_data2)):
+            self.logger.error("[ERROR]    - " + channel + " contains NaN values.")
+        else:
+            print("PV Does Not Have NaNs:       OK")
 
     def format_array(self, array, threshold):
         # returns string of array to print
@@ -333,25 +387,3 @@ class BLD_TESTER:
             return "[" + head_str + " ... " + tail_str + "] (" + str(len(array)) + ")"
         else:
             return "[" + ', '.join(map(str, array)) + "] (" + str(len(array)) + ")"
-
-    def check_nan_in_channel_data(self, channel):
-        channel_data1 = self.packet1["channel_info"][channel]
-        channel_data2 = self.packet2["channel_info"][channel]
-        # Check for at least one NaN value
-        if np.isnan(np.sum(channel_data1)) or np.isnan(np.sum(channel_data2)):
-            self.logger.error("[ERROR]    - " + pv_name + " contains NaN values.")
-        else:
-            print("PV Does Not Have NaNs:       OK")
-    
-    def check_PID_diff_between_packet(self, freq, update_rate):
-        init_PID1 = self.packet1["pid_list"][-1] # PID of last event
-        init_PID2 = self.packet2["pid_list"][0]
-
-        measured_rate = init_PID2 - init_PID1
-        packet_update_rate = settings.core_linac_freq / measured_rate
-
-        if packet_update_rate == update_rate:
-            print("PID Diff Between Packets     OK")
-        else:
-            self.logger.error("[ERROR] -    PID diffs are not consistent between packets for frequency " + str(freq) + " at rate " + update_rate)
-        
