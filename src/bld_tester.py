@@ -6,11 +6,12 @@ import re
 import random
 import subprocess
 from epics import caget, caput, camonitor, camonitor_clear, PV
+import socket
 
 class BLD_TESTER:
     def __init__(self):
         print("Initializing BLD_TESTER\n")
-        self.prefix = settings.cmd_env_paths["P"]
+        self.prefix = settings.cmd_env_paths[settings.pv_macro]
         self.logger = settings.logger
 
         self.bld_decode_path = ""
@@ -82,7 +83,19 @@ class BLD_TESTER:
 
         # TODO: Use random multicast IP and port instead of fixed
         caput(self.bld_global_pv_control, 0)
-        caput(self.bld_multicast_ip, "134.79.216.240")
+        # We will use unicast instead of multicast because the dev network
+        # doesn't have multicast configured.
+        # We use the host where the script is running as the unicast address to
+        # receive BLD packets from the IOC.
+        hostname = socket.gethostname()
+        ip_addresses = socket.getaddrinfo(hostname, None, socket.AF_INET)  # AF_INET = IPv4
+        # In dev at SLAC we want the interface with IP starting at 134.79.
+        filtered_ips = [
+            addr[4][0]
+            for addr in ip_addresses
+            if addr[4][0].startswith("134.79.")
+        ]
+        caput(self.bld_multicast_ip, filtered_ips[0])
         caput(self.bld_multicast_port, 10148)
         caput(self.bld_fixed_rate, rate)
         caput(self.bld_acquisition, 1)
@@ -140,7 +153,7 @@ class BLD_TESTER:
 
     def run_bld_decode(self, num_packets):
         try:
-            output_info = subprocess.run(["./bldDecode", "-b", "EM2K0:XGMD:HPS:BLD_PAYLOAD", "-p", "10148", "-n", 
+            output_info = subprocess.run(["./bldDecode", "-u", "-b", self.prefix + ":BLD_PAYLOAD", "-p", "10148", "-n", 
                 str(num_packets), "-d"], capture_output=True, cwd = self.bld_decode_path, timeout = 5)
             output_bytestr = output_info.stdout
             output = output_bytestr.decode('utf-8')
@@ -153,7 +166,8 @@ class BLD_TESTER:
     def replace_path_env(self, bld_decode_path):
         #replace env variables in bldDecode path
 
-        bld_decode_path += '/bin/rhel7-x86_64'
+        #TODO: auto discover rhel version
+        bld_decode_path += '/bin/rhel9-x86_64'
         # Split by path seperators
         bld_decode_split = bld_decode_path.split(os.sep)
         # For each part of path, replace env var with actual val
