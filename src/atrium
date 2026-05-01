@@ -51,6 +51,7 @@ class ARG_PARSER:
         parser.add_argument('--test_type', dest='test_type', default="all", help='sys: test only system buffers, usr: test only user buffers, bld: test only bld freqs, all: test all')
         parser.add_argument('--bld_decode_path', dest='bld_decode_path', default="$PACKAGE_SITE_TOP/bldDecode/current", help='path to file location of bldDecode (default: $PACKAGE_SITE_TOP/bldDecode/current)')
         parser.add_argument('--bld_configs', dest='bld_configs', nargs='+', default='', help='list of bld frequencies to test (default to all frequencies)')
+        parser.add_argument('--pv_macro', dest='pv_macro', default='P', help='If the IOC uses something other than ${P} for the PV base name, use this')
 
         # Parse out arguments
         args = parser.parse_args()
@@ -115,6 +116,9 @@ class ARG_PARSER:
 
         if args.bld_configs:
             settings.bld_config_list = args.bld_configs
+
+        if args.pv_macro:
+            settings.pv_macro = args.pv_macro
 
 #************ CMD_SEEKER Class ************#
 class CMD_SEEKER:

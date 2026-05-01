@@ -131,6 +131,9 @@ bld_decode_path = ""
 # The bld configurations to test (1-4)
 bld_config_list = list(range(1,5))
 
+# The macro in st.cmd that gives the PV base name (usually ${P})
+pv_macro = "P"
+
 # BLD channels found as bldChannelName in st.cmd
 bld_channels = []
 
