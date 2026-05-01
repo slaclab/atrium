@@ -211,6 +211,7 @@ class USR_BUFF_TESTER:
 
         # EX: Convert from '2024/08/08 17:11:53.449763740' to '1723162313.044976'
         ts = caget("TPG:B084:2:TS")
+        # TODO: catch exception if caget can't find the PV
         ts = ts[:-3] # Reduce decimal to 6 decimal spaces
         ts = ts.replace("/", "-") # Replace '/' with '-'
         num_ts = datetime.fromisoformat(ts).timestamp() # Convert to iso format
