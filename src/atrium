@@ -19,7 +19,6 @@ import bld_tester
 
 
 #TODO: case when cpu name is wrong
-# Pass cpu name as argument
 # Make number of bsa items to test an argument
 
 
@@ -294,18 +293,26 @@ class CMD_SEEKER:
                     valid_choice = True
 
         print("Please, wait a few seconds, I'm reading the st.cmd file.")
-        
+
         st_cmd_exists = False
-        
-        ioc_path = os.environ["IOC"] + "/" + settings.ioc + "/iocSpecificRelease/iocBoot/"
+
+        ioc_path = os.environ["EPICS_IOCS"] + "/" + settings.ioc + "/iocSpecificRelease/iocBoot"
         path_exists = os.path.exists(ioc_path)
+        # This loop walks through all the iocBoot directory structure and stops
+        # when it finds the directory matching the IOC name. It works with
+        # iocBoot/<ioc name> or iocBoot/<dev/lcls/facet/etc>/<ioc name> or
+        # anything that the engineer's creativity could think of. The only
+        # requirement is that the directory name equals the IOC name.
         if path_exists:
             for root, dirs, files in os.walk(ioc_path):
                 for dir in dirs:
                     if dir == settings.ioc:
                         ioc_path = os.path.join(root, dir, "st.cmd")
                         st_cmd_exists = True
-        
+                        break
+                if st_cmd_exists:
+                    break
+
         if st_cmd_exists:
             # Read the entire st.cmd, expanding sub cmd files
             #st_cmd = subprocess.run(["/afs/slac/u/gu/egumtow/scripts/iocsh_lines.sh", ioc_path], capture_output=True)
