@@ -1,3 +1,5 @@
+<img width="540" height="320" alt="AtriumLogo3" src="https://github.com/user-attachments/assets/caef31ac-16bd-4877-9310-fe14a8d6f79b" />
+
 # Atrium
 Automated Test Regression for IOCs Under Measurement
 
